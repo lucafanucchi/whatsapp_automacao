@@ -2,7 +2,7 @@
 // ATENÇÃO!
 // Cole aqui a URL do seu serviço de BACKEND implantado no Render.
 // =============================================================================
-const BACKEND_URL = "https://SEU-BACKEND-NO-RENDER.onrender.com";
+const BACKEND_URL = "https://whatsapp-backend-km3f.onrender.com";
 
 
 // --- Selecionando os elementos da página ---
