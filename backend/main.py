@@ -12,7 +12,7 @@ app = FastAPI(
 # Após fazer o deploy do serviço 'whatsapp-gateway' no Render,
 # você deve copiar a URL fornecida por ele e colar aqui.
 # =============================================================================
-GATEWAY_URL = "https://SEU-GATEWAY-NO-RENDER.onrender.com/send-message"
+GATEWAY_URL = "https://whatsapp-gateway-a9iz.onrender.com/send-message"
 
 @app.post("/enviar-teste")
 async def enviar_mensagem_teste(numero: str, mensagem: str):
