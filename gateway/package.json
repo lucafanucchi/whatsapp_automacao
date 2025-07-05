@@ -1,0 +1,14 @@
+{
+  "name": "whatsapp-gateway",
+  "version": "1.0.0",
+  "description": "Serviço para enviar mensagens via WhatsApp.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.4",
+    "express": "^4.19.2",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

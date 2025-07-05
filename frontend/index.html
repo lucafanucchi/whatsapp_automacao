@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disparador de Campanhas WhatsApp</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Painel de Campanhas WhatsApp</h1>
+            <p>Escreva sua mensagem, cole a lista de números e clique em enviar.</p>
+            <p class="aviso"><strong>Aviso:</strong> Para esta tela funcionar, o serviço do WhatsApp já deve ter sido conectado escaneando o QR Code nos logs do Render.</p>
+        </header>
+
+        <main>
+            <form id="campanha-form">
+                <div class="form-group">
+                    <label for="mensagem">Mensagem da Campanha:</label>
+                    <textarea id="mensagem" rows="6" placeholder="Ex: Olá! Temos uma promoção especial para você esta semana."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="numeros">Lista de Números:</label>
+                    <textarea id="numeros" rows="10" placeholder="Cole um número por linha, no formato 5511999998888"></textarea>
+                </div>
+
+                <button type="submit" id="enviar-btn">Enviar Campanha</button>
+            </form>
+        </main>
+
+        <footer>
+            <h3>Log de Envio:</h3>
+            <div id="feedback-envio" class="feedback">
+                </div>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
