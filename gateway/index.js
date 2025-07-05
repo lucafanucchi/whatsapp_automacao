@@ -1,26 +1,28 @@
 // Importando as bibliotecas necessárias
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const express = require('express');
-const qrcode = require('qrcode-terminal');
 const { Boom } = require('@hapi/boom');
+const cors = require('cors'); // NOVO: Importando a biblioteca CORS
 
 // Configuração do servidor web
 const app = express();
-app.use(express.json()); // Habilita o parsing de JSON no corpo das requisições
 
-// IMPORTANTE PARA O RENDER: Usa a porta fornecida pelo ambiente ou 3000 como padrão
+// NOVO: Habilitando o CORS para que nosso frontend local possa acessar o gateway no Render
+app.use(cors()); 
+
+app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
-let sock; // Variável para armazenar nossa conexão com o WhatsApp
+let sock; 
+let qrCodeData = null; // Variável para armazenar o texto do QR Code
 
 // Função principal para conectar ao WhatsApp
 async function connectToWhatsApp() {
-    // `useMultiFileAuthState` salva a sessão para não precisar ler o QR code toda vez
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     
     sock = makeWASocket({
         auth: state,
-        printQRInTerminal: true, // Imprime o QR code no terminal (ou nos logs do Render)
+        printQRInTerminal: false, // ALTERADO: Não vamos mais imprimir no terminal
     });
 
     // Listener para eventos de conexão
@@ -28,32 +30,45 @@ async function connectToWhatsApp() {
         const { connection, lastDisconnect, qr } = update;
         
         if (qr) {
-            console.log("QR Code recebido, escaneie com seu celular:");
-            qrcode.generate(qr, { small: true }); // Mostra o QR code menor no terminal
+            console.log("QR Code recebido. Disponível via API em /qr-code.");
+            qrCodeData = qr; // Armazenamos o QR Code na nossa variável
         }
 
         if (connection === 'close') {
+            qrCodeData = null;
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log('Conexão fechada, motivo:', lastDisconnect.error, ', reconectando:', shouldReconnect);
             if (shouldReconnect) {
                 connectToWhatsApp();
             }
         } else if (connection === 'open') {
+            qrCodeData = null;
             console.log('Conexão com o WhatsApp aberta com sucesso!');
         }
     });
 
-    // Salva as credenciais (sessão) sempre que forem atualizadas
+    // Salva as credenciais
     sock.ev.on('creds.update', saveCreds);
 }
 
-// Rota de teste para verificar se o servidor está no ar
+// Rota de status
 app.get('/status', (req, res) => {
+    const isConnected = sock && sock.ws.isOpen;
     res.json({
         status: 'ok',
-        connected: sock && sock.ws.isOpen,
+        connected: isConnected,
     });
 });
+
+// NOVO: Rota para o frontend buscar o QR Code
+app.get('/qr-code', (req, res) => {
+    if (qrCodeData) {
+        res.json({ qr: qrCodeData });
+    } else {
+        res.status(404).json({ message: 'Nenhum QR Code disponível.' });
+    }
+});
+
 
 // Rota principal para enviar mensagens
 app.post('/send-message', async (req, res) => {
