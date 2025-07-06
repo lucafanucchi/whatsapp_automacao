@@ -1,7 +1,16 @@
 from fastapi import FastAPI, HTTPException
-# NOVO: Importa o middleware de CORS
 from fastapi.middleware.cors import CORSMiddleware
-import httpx 
+import httpx
+# NOVO: Importa a classe BaseModel do Pydantic
+from pydantic import BaseModel
+
+# =============================================================================
+# NOVO: Definindo um modelo para os dados da requisição
+# Isso diz ao FastAPI para esperar um JSON com os campos "numero" e "mensagem".
+# =============================================================================
+class MensagemPayload(BaseModel):
+    numero: str
+    mensagem: str
 
 app = FastAPI(
     title="API de Automação de WhatsApp",
@@ -9,67 +18,53 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# =============================================================================
-# NOVO: Configuração do CORS
-# Isso permite que seu frontend local se comunique com o backend no Render.
-# =============================================================================
-origins = ["*"] # O asterisco permite todas as origens (qualquer site/local)
-
+# Configuração do CORS (continua igual)
+origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"], # Permite todos os métodos (GET, POST, e o importante OPTIONS)
-    allow_headers=["*"], # Permite todos os cabeçalhos
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# =============================================================================
-# ATENÇÃO!
-# A URL do seu Gateway deve continuar configurada aqui.
-# =============================================================================
 GATEWAY_URL = "https://whatsapp-gateway-a9iz.onrender.com/send-message"
 
+# ALTERADO: A assinatura da função agora usa o nosso modelo Pydantic
 @app.post("/enviar-teste")
-async def enviar_mensagem_teste(numero: str, mensagem: str):
+async def enviar_mensagem_teste(payload: MensagemPayload):
     """
-    Endpoint de teste para verificar a comunicação entre o Backend e o Gateway.
-    Formato do número esperado: 5511999998888 (código do país + ddd + numero)
+    Este endpoint recebe um payload JSON com numero e mensagem,
+    e o encaminha para o gateway do WhatsApp.
     """
-    print(f"Recebida requisição para enviar '{mensagem}' para o número {numero}")
+    # ALTERADO: Acessamos os dados através do objeto 'payload'
+    print(f"Recebida requisição para enviar '{payload.mensagem}' para o número {payload.numero}")
     
+    # O resto da função continua muito parecido
     if "SEU-GATEWAY-NO-RENDER" in GATEWAY_URL:
-        raise HTTPException(
-            status_code=400,
-            detail="ERRO: A URL do Gateway ainda não foi configurada. Por favor, atualize a variável GATEWAY_URL no arquivo main.py."
-        )
+        raise HTTPException(status_code=400, detail="ERRO: A URL do Gateway não foi configurada.")
 
-    payload = {
-        "number": numero,
-        "message": mensagem
+    # Monta o payload para o gateway
+    gateway_payload = {
+        "number": payload.numero,
+        "message": payload.mensagem
     }
 
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.post(GATEWAY_URL, json=payload, timeout=30.0)
+            response = await client.post(GATEWAY_URL, json=gateway_payload, timeout=30.0)
         
         response.raise_for_status() 
-
         print("Gateway respondeu com sucesso.")
         return response.json()
 
     except httpx.HTTPStatusError as e:
         print(f"Erro de status do Gateway: {e.response.status_code}")
         print(f"Detalhes: {e.response.text}")
-        raise HTTPException(
-            status_code=e.response.status_code,
-            detail=f"Erro no Gateway: {e.response.json()}"
-        )
+        raise HTTPException(status_code=e.response.status_code, detail=f"Erro no Gateway: {e.response.json()}")
     except httpx.RequestError as e:
         print(f"Não foi possível conectar ao Gateway: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail="Não foi possível conectar ao Gateway de WhatsApp. Verifique se ele está rodando."
-        )
+        raise HTTPException(status_code=503, detail="Não foi possível conectar ao Gateway de WhatsApp.")
 
 @app.get("/")
 def ler_raiz():
