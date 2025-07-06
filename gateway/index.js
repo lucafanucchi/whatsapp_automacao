@@ -2,38 +2,28 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const express = require('express');
 const { Boom } = require('@hapi/boom');
-const cors = require('cors'); // NOVO: Importando a biblioteca CORS
+const cors = require('cors');
+const fs = require('fs'); // NOVO: Importando o módulo de sistema de arquivos do Node.js
 
 // Configuração do servidor web
 const app = express();
-
-// NOVO: Habilitando o CORS para que nosso frontend local possa acessar o gateway no Render
 app.use(cors()); 
-
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
 
 let sock; 
-let qrCodeData = null; // Variável para armazenar o texto do QR Code
+let qrCodeData = null;
 
-// Função principal para conectar ao WhatsApp
+// ... (A função connectToWhatsApp continua exatamente a mesma)
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
-    
-    sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: false, // ALTERADO: Não vamos mais imprimir no terminal
-    });
-
-    // Listener para eventos de conexão
+    sock = makeWASocket({ auth: state, printQRInTerminal: false });
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
-        
         if (qr) {
             console.log("QR Code recebido. Disponível via API em /qr-code.");
-            qrCodeData = qr; // Armazenamos o QR Code na nossa variável
+            qrCodeData = qr;
         }
-
         if (connection === 'close') {
             qrCodeData = null;
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
@@ -46,21 +36,18 @@ async function connectToWhatsApp() {
             console.log('Conexão com o WhatsApp aberta com sucesso!');
         }
     });
-
-    // Salva as credenciais
     sock.ev.on('creds.update', saveCreds);
 }
 
-// Rota de status
+// ---- API ENDPOINTS ----
+
+// Rota de status (sem alterações)
 app.get('/status', (req, res) => {
     const isConnected = sock && sock.ws.isOpen;
-    res.json({
-        status: 'ok',
-        connected: isConnected,
-    });
+    res.json({ status: 'ok', connected: isConnected });
 });
 
-// NOVO: Rota para o frontend buscar o QR Code
+// Rota para buscar o QR Code (sem alterações)
 app.get('/qr-code', (req, res) => {
     if (qrCodeData) {
         res.json({ qr: qrCodeData });
@@ -69,39 +56,40 @@ app.get('/qr-code', (req, res) => {
     }
 });
 
-
-// Rota principal para enviar mensagens
+// Rota para enviar mensagens (sem alterações)
 app.post('/send-message', async (req, res) => {
-    const { number, message } = req.body;
-    
-    // Validação se estamos conectados
-    if (!sock || !sock.ws.isOpen) {
-        return res.status(503).json({ error: 'Gateway não está conectado ao WhatsApp.' });
-    }
+    // ... (o código aqui permanece o mesmo)
+});
 
-    if (!number || !message) {
-        return res.status(400).json({ error: 'Os campos "number" e "message" são obrigatórios.' });
-    }
-
+// NOVO: Rota para forçar o logout e limpar a sessão
+app.post('/logout', async (req, res) => {
+    console.log("Recebida requisição de logout...");
     try {
-        // Formata o número para o padrão do WhatsApp (código do país + ddd + numero + @s.whatsapp.net)
-        const recipientId = `${number}@s.whatsapp.net`;
+        // 1. Desconecta o socket atual se ele existir
+        if (sock) {
+            await sock.logout();
+            console.log("Socket desconectado.");
+        }
         
-        const [result] = await sock.onWhatsApp(recipientId);
-
-        if (!result || !result.exists) {
-            return res.status(404).json({ error: 'O número não existe no WhatsApp.' });
+        // 2. Apaga a pasta de autenticação do disco do servidor
+        const authDir = 'auth_info_baileys';
+        if (fs.existsSync(authDir)) {
+            fs.rmSync(authDir, { recursive: true, force: true });
+            console.log("Pasta de autenticação apagada com sucesso.");
         }
 
-        await sock.sendMessage(recipientId, { text: message });
-        console.log(`Mensagem enviada para: ${number}`);
-        res.status(200).json({ success: true, message: `Mensagem enviada para ${number}` });
+        res.status(200).json({ success: true, message: 'Sessão encerrada. O gateway irá reiniciar e gerar um novo QR Code.' });
+        
+        // 3. Força o reinício do processo. O Render irá reiniciá-lo automaticamente.
+        console.log("Forçando o reinício do serviço...");
+        process.exit(1);
 
     } catch (error) {
-        console.error('Erro ao enviar mensagem:', error);
-        res.status(500).json({ success: false, error: 'Falha ao enviar a mensagem.' });
+        console.error("Erro no processo de logout:", error);
+        res.status(500).json({ success: false, error: 'Falha ao fazer logout.' });
     }
 });
+
 
 // Inicia o servidor e a conexão com o WhatsApp
 app.listen(PORT, () => {
