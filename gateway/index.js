@@ -1,11 +1,10 @@
-// Importando as bibliotecas necessárias
+// ... (imports e configurações iniciais continuam os mesmos)
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const express = require('express');
 const { Boom } = require('@hapi/boom');
 const cors = require('cors');
 const fs = require('fs');
 
-// Configuração do servidor web
 const app = express();
 app.use(cors()); 
 app.use(express.json());
@@ -13,91 +12,91 @@ const PORT = process.env.PORT || 3000;
 
 let sock; 
 let qrCodeData = null;
-// NOVO: Variável para rastrear o status real da conexão
 let connectionStatus = 'connecting'; 
-
-// Função principal para conectar ao WhatsApp
+// ... (a função connectToWhatsApp continua a mesma)
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     sock = makeWASocket({ auth: state, printQRInTerminal: false });
-
-    // Listener para eventos de conexão
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
-
-        // NOVO: Atualiza nosso rastreador de status
-        if (connection) {
-            connectionStatus = connection;
-        }
-        
+        if (connection) { connectionStatus = connection; }
         if (qr) {
-            console.log("QR Code recebido. Disponível via API em /qr-code.");
+            console.log("QR Code recebido.");
             qrCodeData = qr;
         }
-
         if (connection === 'close') {
             qrCodeData = null;
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('Conexão fechada, motivo:', lastDisconnect.error, ', reconectando:', shouldReconnect);
-            if (shouldReconnect) {
-                connectToWhatsApp();
-            }
+            if (shouldReconnect) { connectToWhatsApp(); }
         } else if (connection === 'open') {
             qrCodeData = null;
-            console.log('Conexão com o WhatsApp aberta e autenticada com sucesso!');
+            console.log('Conexão autenticada com sucesso!');
         }
     });
     sock.ev.on('creds.update', saveCreds);
 }
 
-// ---- API ENDPOINTS ----
-
-// Rota de status (CORRIGIDA)
+// ... (as rotas /status, /qr-code, e /logout continuam as mesmas)
 app.get('/status', (req, res) => {
-    // ALTERADO: Agora verificamos o status correto
     const isConnected = connectionStatus === 'open';
-    res.json({ 
-        status: 'ok', 
-        connected: isConnected,
-        connection_status: connectionStatus // Enviando o status detalhado para debug
-    });
+    res.json({ status: 'ok', connected: isConnected, connection_status: connectionStatus });
 });
 
-// Rota para buscar o QR Code (sem alterações)
 app.get('/qr-code', (req, res) => {
-    if (qrCodeData) {
-        res.json({ qr: qrCodeData });
-    } else {
-        res.status(404).json({ message: 'Nenhum QR Code disponível.' });
-    }
+    if (qrCodeData) { res.json({ qr: qrCodeData }); } 
+    else { res.status(404).json({ message: 'Nenhum QR Code disponível.' }); }
 });
 
-// Rota para logout (sem alterações)
 app.post('/logout', async (req, res) => {
-    console.log("Recebida requisição de logout...");
     try {
         if (sock) { await sock.logout(); }
         const authDir = 'auth_info_baileys';
         if (fs.existsSync(authDir)) { fs.rmSync(authDir, { recursive: true, force: true }); }
         res.status(200).json({ success: true, message: 'Sessão encerrada.' });
-        console.log("Logout e limpeza concluídos. Forçando o reinício do serviço...");
         process.exit(1);
-    } catch (error) {
-        console.error("Erro no processo de logout:", error);
-        res.status(500).json({ success: false, error: 'Falha ao fazer logout.' });
-    }
+    } catch (error) { res.status(500).json({ success: false, error: 'Falha ao fazer logout.' }); }
 });
 
-// Rota para enviar mensagens (sem alterações)
-app.post('/send-message', async (req, res) => {
-    // ... o código aqui permanece o mesmo, mas adicionamos uma verificação mais robusta
+
+// =============================================================================
+// MUDANÇA ARQUITETURAL IMPORTANTE AQUI!
+// =============================================================================
+app.post('/send-message', (req, res) => {
+    const { number, message } = req.body;
+
     if (connectionStatus !== 'open') {
-        return res.status(503).json({ error: 'Gateway não está conectado e autenticado ao WhatsApp.' });
+        return res.status(503).json({ success: false, message: 'Gateway não está conectado e autenticado ao WhatsApp.' });
     }
-    // ... resto do código de envio
+    if (!number || !message) {
+        return res.status(400).json({ success: false, message: 'Os campos "number" e "message" são obrigatórios.' });
+    }
+
+    // 1. Responde IMEDIATAMENTE para o backend, dizendo que o pedido foi aceito.
+    res.status(202).json({ success: true, message: 'Pedido recebido. O envio será processado em segundo plano.' });
+
+    // 2. Tenta fazer o trabalho pesado de enviar a mensagem EM SEGUNDO PLANO.
+    (async () => {
+        try {
+            const recipientId = `${number}@s.whatsapp.net`;
+            console.log(`Processando envio em segundo plano para: ${number}`);
+            
+            const [result] = await sock.onWhatsApp(recipientId);
+            if (!result || !result.exists) {
+                console.error(`FALHA (segundo plano): O número ${number} não existe no WhatsApp.`);
+                return;
+            }
+
+            await sock.sendMessage(recipientId, { text: message });
+            console.log(`SUCESSO (segundo plano): Mensagem enviada para ${number}`);
+
+        } catch (error) {
+            console.error(`ERRO (segundo plano) ao tentar enviar para ${number}:`, error);
+        }
+    })(); // A função é chamada imediatamente aqui
 });
 
-// Inicia o servidor e a conexão com o WhatsApp
+
+// Inicia o servidor e a conexão
 app.listen(PORT, () => {
     console.log(`Gateway de WhatsApp rodando na porta ${PORT}`);
     connectToWhatsApp();
