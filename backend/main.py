@@ -24,13 +24,28 @@ app.add_middleware(
 
 GATEWAY_URL = "https://whatsapp-gateway-a9iz.onrender.com/send-message"
 
+# =============================================================================
+# NOVO ENDPOINT DE DEBUG
+# Para testar se o container no Render consegue fazer chamadas para a internet.
+# =============================================================================
+@app.get("/testar-conexao-externa")
+async def testar_conexao_externa():
+    print("Iniciando teste de conexão externa para https://api.publicapis.org/entries")
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get("https://api.publicapis.org/entries", timeout=15.0)
+        response.raise_for_status()
+        print("Conexão externa bem-sucedida!")
+        return {"status": "SUCESSO", "detail": "O container consegue fazer requisições HTTPS para a internet."}
+    except Exception as e:
+        print(f"FALHA na conexão externa: {e}")
+        raise HTTPException(status_code=500, detail=f"Falha ao conectar externamente: {e}")
+
+
 @app.post("/enviar-teste")
 async def enviar_mensagem_teste(payload: MensagemPayload):
     print(f"Recebida requisição para enviar '{payload.mensagem}' para o número {payload.numero}")
     
-    if "SEU-GATEWAY-NO-RENDER" in GATEWAY_URL:
-        raise HTTPException(status_code=400, detail="ERRO: A URL do Gateway ainda não foi configurada.")
-
     gateway_payload = {
         "number": payload.numero,
         "message": payload.mensagem
@@ -51,10 +66,13 @@ async def enviar_mensagem_teste(payload: MensagemPayload):
     except httpx.RequestError as e:
         # =============================================================================
         # MUDANÇA IMPORTANTE AQUI!
-        # Vamos imprimir o erro detalhado da biblioteca httpx para entender a falha na rede.
+        # Extraindo mais detalhes da exceção.
         # =============================================================================
-        print(f"Erro de conexão detalhado do HTTpx: {e}")
-        print(f"Não foi possível conectar ao Gateway: {GATEWAY_URL}")
+        print("--- INÍCIO DO DEBUG DE ERRO HTTpx ---")
+        print(f"Tipo de exceção: {type(e)}")
+        print(f"Argumentos da exceção: {e.args}")
+        print(f"Requisição que falhou: {e.request}")
+        print("--- FIM DO DEBUG DE ERRO HTTpx ---")
         raise HTTPException(status_code=503, detail="Não foi possível conectar ao Gateway de WhatsApp.")
 
 @app.get("/")
