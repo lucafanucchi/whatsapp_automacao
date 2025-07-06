@@ -22,7 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GATEWAY_URL = "https://whatsapp-gateway-a9iz.onrender.com/send-message"
+GATEWAY_URL = "http://whatsapp-gateway-a9iz:10000/send-message"
 
 # =============================================================================
 # NOVO ENDPOINT DE DEBUG
