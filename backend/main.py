@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException
-import httpx # Biblioteca moderna para fazer requisições HTTP
+# NOVO: Importa o middleware de CORS
+from fastapi.middleware.cors import CORSMiddleware
+import httpx 
 
 app = FastAPI(
     title="API de Automação de WhatsApp",
@@ -8,9 +10,22 @@ app = FastAPI(
 )
 
 # =============================================================================
+# NOVO: Configuração do CORS
+# Isso permite que seu frontend local se comunique com o backend no Render.
+# =============================================================================
+origins = ["*"] # O asterisco permite todas as origens (qualquer site/local)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"], # Permite todos os métodos (GET, POST, e o importante OPTIONS)
+    allow_headers=["*"], # Permite todos os cabeçalhos
+)
+
+# =============================================================================
 # ATENÇÃO!
-# Após fazer o deploy do serviço 'whatsapp-gateway' no Render,
-# você deve copiar a URL fornecida por ele e colar aqui.
+# A URL do seu Gateway deve continuar configurada aqui.
 # =============================================================================
 GATEWAY_URL = "https://whatsapp-gateway-a9iz.onrender.com/send-message"
 
@@ -34,18 +49,15 @@ async def enviar_mensagem_teste(numero: str, mensagem: str):
     }
 
     try:
-        # Usamos httpx para fazer uma chamada assíncrona para o nosso gateway
         async with httpx.AsyncClient() as client:
             response = await client.post(GATEWAY_URL, json=payload, timeout=30.0)
         
-        # Verifica se a requisição para o gateway foi bem sucedida
         response.raise_for_status() 
 
         print("Gateway respondeu com sucesso.")
         return response.json()
 
     except httpx.HTTPStatusError as e:
-        # Erro na resposta do gateway (ex: número não encontrado, etc.)
         print(f"Erro de status do Gateway: {e.response.status_code}")
         print(f"Detalhes: {e.response.text}")
         raise HTTPException(
@@ -53,10 +65,9 @@ async def enviar_mensagem_teste(numero: str, mensagem: str):
             detail=f"Erro no Gateway: {e.response.json()}"
         )
     except httpx.RequestError as e:
-        # Erro de conexão com o gateway (ex: gateway está offline)
         print(f"Não foi possível conectar ao Gateway: {e}")
         raise HTTPException(
-            status_code=503, # Service Unavailable
+            status_code=503,
             detail="Não foi possível conectar ao Gateway de WhatsApp. Verifique se ele está rodando."
         )
 
