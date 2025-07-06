@@ -3,7 +3,7 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = requi
 const express = require('express');
 const { Boom } = require('@hapi/boom');
 const cors = require('cors');
-const fs = require('fs'); // NOVO: Importando o módulo de sistema de arquivos do Node.js
+const fs = require('fs');
 
 // Configuração do servidor web
 const app = express();
@@ -13,17 +13,28 @@ const PORT = process.env.PORT || 3000;
 
 let sock; 
 let qrCodeData = null;
+// NOVO: Variável para rastrear o status real da conexão
+let connectionStatus = 'connecting'; 
 
-// ... (A função connectToWhatsApp continua exatamente a mesma)
+// Função principal para conectar ao WhatsApp
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     sock = makeWASocket({ auth: state, printQRInTerminal: false });
+
+    // Listener para eventos de conexão
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
+
+        // NOVO: Atualiza nosso rastreador de status
+        if (connection) {
+            connectionStatus = connection;
+        }
+        
         if (qr) {
             console.log("QR Code recebido. Disponível via API em /qr-code.");
             qrCodeData = qr;
         }
+
         if (connection === 'close') {
             qrCodeData = null;
             const shouldReconnect = (lastDisconnect.error instanceof Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
@@ -33,7 +44,7 @@ async function connectToWhatsApp() {
             }
         } else if (connection === 'open') {
             qrCodeData = null;
-            console.log('Conexão com o WhatsApp aberta com sucesso!');
+            console.log('Conexão com o WhatsApp aberta e autenticada com sucesso!');
         }
     });
     sock.ev.on('creds.update', saveCreds);
@@ -41,10 +52,15 @@ async function connectToWhatsApp() {
 
 // ---- API ENDPOINTS ----
 
-// Rota de status (sem alterações)
+// Rota de status (CORRIGIDA)
 app.get('/status', (req, res) => {
-    const isConnected = sock && sock.ws.isOpen;
-    res.json({ status: 'ok', connected: isConnected });
+    // ALTERADO: Agora verificamos o status correto
+    const isConnected = connectionStatus === 'open';
+    res.json({ 
+        status: 'ok', 
+        connected: isConnected,
+        connection_status: connectionStatus // Enviando o status detalhado para debug
+    });
 });
 
 // Rota para buscar o QR Code (sem alterações)
@@ -56,40 +72,30 @@ app.get('/qr-code', (req, res) => {
     }
 });
 
-// Rota para enviar mensagens (sem alterações)
-app.post('/send-message', async (req, res) => {
-    // ... (o código aqui permanece o mesmo)
-});
-
-// NOVO: Rota para forçar o logout e limpar a sessão
+// Rota para logout (sem alterações)
 app.post('/logout', async (req, res) => {
     console.log("Recebida requisição de logout...");
     try {
-        // 1. Desconecta o socket atual se ele existir
-        if (sock) {
-            await sock.logout();
-            console.log("Socket desconectado.");
-        }
-        
-        // 2. Apaga a pasta de autenticação do disco do servidor
+        if (sock) { await sock.logout(); }
         const authDir = 'auth_info_baileys';
-        if (fs.existsSync(authDir)) {
-            fs.rmSync(authDir, { recursive: true, force: true });
-            console.log("Pasta de autenticação apagada com sucesso.");
-        }
-
-        res.status(200).json({ success: true, message: 'Sessão encerrada. O gateway irá reiniciar e gerar um novo QR Code.' });
-        
-        // 3. Força o reinício do processo. O Render irá reiniciá-lo automaticamente.
-        console.log("Forçando o reinício do serviço...");
+        if (fs.existsSync(authDir)) { fs.rmSync(authDir, { recursive: true, force: true }); }
+        res.status(200).json({ success: true, message: 'Sessão encerrada.' });
+        console.log("Logout e limpeza concluídos. Forçando o reinício do serviço...");
         process.exit(1);
-
     } catch (error) {
         console.error("Erro no processo de logout:", error);
         res.status(500).json({ success: false, error: 'Falha ao fazer logout.' });
     }
 });
 
+// Rota para enviar mensagens (sem alterações)
+app.post('/send-message', async (req, res) => {
+    // ... o código aqui permanece o mesmo, mas adicionamos uma verificação mais robusta
+    if (connectionStatus !== 'open') {
+        return res.status(503).json({ error: 'Gateway não está conectado e autenticado ao WhatsApp.' });
+    }
+    // ... resto do código de envio
+});
 
 // Inicia o servidor e a conexão com o WhatsApp
 app.listen(PORT, () => {
