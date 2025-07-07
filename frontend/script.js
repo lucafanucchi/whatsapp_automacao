@@ -1,10 +1,10 @@
 // =============================================================================
 // --- CONFIGURAÇÃO PRINCIPAL ---
 // =============================================================================
-const CLOUDINARY_CLOUD_NAME = "di1axitma";
+const CLOUDINARY_CLOUD_NAME = "di1axitma"; // Substitua se for diferente
 const CLOUDINARY_UPLOAD_PRESET = "ml_default";
 const BACKEND_URL = "https://whatsapp-backend-km3f.onrender.com";
-const GATEWAY_URL = "https://whatsapp-gateway-a9iz.onrender.com"; // Usado para status e QR code
+const GATEWAY_URL = "https://whatsapp-gateway-a9iz.onrender.com";
 
 // =============================================================================
 // --- SELEÇÃO DE ELEMENTOS DO DOM ---
@@ -18,7 +18,7 @@ const qrContainer = document.getElementById('qrcode-container');
 const statusConexaoDiv = document.getElementById('status-conexao');
 const logoutBtn = document.getElementById('logout-btn');
 
-// Elementos da Tela Principal (Formulário de Campanha)
+// Elementos da Tela Principal
 const form = document.getElementById('campanha-form');
 const mensagemTextarea = document.getElementById('mensagem');
 const imagemInput = document.getElementById('imagem-input');
@@ -29,9 +29,8 @@ const feedbackDiv = document.getElementById('feedback-envio');
 // =============================================================================
 // --- LÓGICA DE CONTROLE DAS TELAS E ESTADO ---
 // =============================================================================
-let qrCodePollingInterval = null; // Para controlar o loop de verificação do QR
+let qrCodePollingInterval = null;
 
-// Função que mostra a tela correta baseada no status da conexão
 function gerenciarVisibilidadeTelas(estaConectado) {
     if (estaConectado) {
         telaPrincipal.style.display = 'block';
@@ -44,9 +43,9 @@ function gerenciarVisibilidadeTelas(estaConectado) {
     }
 }
 
-// Função que verifica o status do gateway no servidor
 async function verificarStatusInicial() {
     try {
+        statusConexaoDiv.textContent = 'Verificando status do servidor...';
         const response = await fetch(`${GATEWAY_URL}/status`);
         const data = await response.json();
         gerenciarVisibilidadeTelas(data.connected);
@@ -57,13 +56,11 @@ async function verificarStatusInicial() {
     }
 }
 
-// Inicia a verificação do QR code, rodando em loop
 function iniciarPollingQrCode() {
-    if (qrCodePollingInterval) clearInterval(qrCodePollingInterval); // Limpa loop anterior se houver
+    if (qrCodePollingInterval) clearInterval(qrCodePollingInterval);
 
     qrCodePollingInterval = setInterval(async () => {
         try {
-            // Primeiro, verifica se já conectou
             const statusResponse = await fetch(`${GATEWAY_URL}/status`);
             const statusData = await statusResponse.json();
             if (statusData.connected) {
@@ -71,51 +68,144 @@ function iniciarPollingQrCode() {
                 return;
             }
 
-            // Se não conectou, busca o QR code
             const qrResponse = await fetch(`${GATEWAY_URL}/qr-code`);
             if (qrResponse.ok) {
                 const qrData = await qrResponse.json();
-                qrContainer.innerHTML = ''; // Limpa o container
+                qrContainer.innerHTML = '';
                 new QRCode(qrContainer, { text: qrData.qr, width: 250, height: 250 });
                 statusConexaoDiv.textContent = 'Escaneie o código para conectar.';
                 logoutBtn.style.display = 'inline-block';
             } else {
                 statusConexaoDiv.textContent = 'Aguardando QR Code do servidor...';
-                qrContainer.innerHTML = ''; // Limpa QR code antigo
+                qrContainer.innerHTML = '';
             }
         } catch (error) {
             statusConexaoDiv.textContent = '❌ Erro ao buscar QR Code.';
         }
-    }, 4000); // Verifica a cada 4 segundos
+    }, 4000);
 }
 
 // =============================================================================
 // --- LÓGICA DOS EVENTOS (CLICKS) ---
 // =============================================================================
-
-// Inicia tudo quando a página carrega
 document.addEventListener('DOMContentLoaded', verificarStatusInicial);
 
-// Evento do botão de logout
 logoutBtn.addEventListener('click', async () => {
-    adicionarLog("Encerrando sessão...", 'info');
+    logoutBtn.disabled = true;
+    logoutBtn.textContent = 'Desconectando...';
     try {
         await fetch(`${GATEWAY_URL}/logout`, { method: 'POST' });
-        adicionarLog("Sessão encerrada. A página será recarregada.", 'success');
+        statusConexaoDiv.textContent = 'Sessão encerrada. A página será recarregada.';
         setTimeout(() => window.location.reload(), 2000);
     } catch (error) {
-        adicionarLog("Falha ao encerrar sessão.", 'error');
+        statusConexaoDiv.textContent = 'Falha ao encerrar sessão.';
+        logoutBtn.disabled = false;
+        logoutBtn.textContent = 'Desconectar Sessão Atual';
     }
 });
 
-// Evento de envio do formulário de campanha (código que já tínhamos)
 form.addEventListener('submit', async function(event) {
-    // ... (toda a lógica de envio de campanha que já está funcionando permanece aqui)
+    event.preventDefault(); 
+    const mensagem = mensagemTextarea.value.trim();
+    const numeros = numerosTextarea.value.trim().split('\n').filter(n => n);
+    const imagemArquivo = imagemInput.files[0];
+
+    if ((!mensagem && !imagemArquivo) || numeros.length === 0) {
+        adicionarLog('É necessário ter uma mensagem ou uma imagem, e uma lista de números.', 'error');
+        return;
+    }
+    
+    enviarBtn.disabled = true;
+    enviarBtn.textContent = 'Enviando...';
+    feedbackDiv.innerHTML = ''; 
+    
+    let imageUrl = null;
+    if (imagemArquivo) {
+        adicionarLog('Fazendo upload da imagem para a nuvem...');
+        try {
+            imageUrl = await uploadImagemParaCloudinary(imagemArquivo);
+            adicionarLog(`Upload concluído: ${imageUrl}`, 'success');
+            
+            const segundosDePausa = 5;
+            adicionarLog(`Aguardando ${segundosDePausa} segundos para a imagem se propagar na nuvem...`, 'info-small');
+            await new Promise(resolve => setTimeout(resolve, segundosDePausa * 1000));
+        } catch (error) {
+            adicionarLog(`Falha no upload da imagem: ${error.message}`, 'error');
+            enviarBtn.disabled = false;
+            enviarBtn.textContent = 'Enviar Campanha';
+            return;
+        }
+    }
+
+    adicionarLog(`Iniciando campanha para ${numeros.length} número(s).`);
+
+    for (const numero of numeros) {
+        adicionarLog(`Tentando enviar para ${numero}...`);
+        try {
+            await enviarMensagemParaBackend(numero, mensagem, imageUrl);
+            adicionarLog(`--> Sucesso: Pedido para ${numero} foi aceito pelo servidor.`, 'success');
+        } catch (error) {
+            adicionarLog(`--> Falha: Erro ao enviar para ${numero}. Detalhes: ${error.message}`, 'error');
+        }
+        
+        const delayAleatorio = Math.floor(Math.random() * (25000 - 8000 + 1) + 8000);
+        adicionarLog(`Aguardando ${(delayAleatorio / 1000).toFixed(1)} segundos...`, 'info-small');
+        await new Promise(resolve => setTimeout(resolve, delayAleatorio));
+    }
+
+    adicionarLog('Campanha finalizada!');
+    enviarBtn.disabled = false;
+    enviarBtn.textContent = 'Enviar Campanha';
 });
 
 // =============================================================================
-// --- FUNÇÕES AUXILIARES (JÁ EXISTENTES) ---
+// --- FUNÇÕES AUXILIARES ---
 // =============================================================================
-async function uploadImagemParaCloudinary(arquivo) { /* ...código existente... */ }
-async function enviarMensagemParaBackend(numero, mensagem, imagemUrl = null) { /* ...código existente... */ }
-function adicionarLog(texto, tipo = 'info') { /* ...código existente... */ }
+async function uploadImagemParaCloudinary(arquivo) {
+    const formData = new FormData();
+    formData.append('file', arquivo);
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+    const response = await fetch(cloudinaryUrl, {
+        method: 'POST',
+        body: formData,
+    });
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error.message || 'Erro desconhecido no Cloudinary');
+    }
+    const data = await response.json();
+    return data.secure_url;
+}
+
+async function enviarMensagemParaBackend(numero, mensagem, imagemUrl = null) {
+    const endpoint = `${BACKEND_URL}/enviar-teste`;
+    const payload = {
+        numero: numero.trim(),
+        mensagem: mensagem,
+        imagem_url: imagemUrl
+    };
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.detail || JSON.stringify(errorData);
+        throw new Error(errorMessage);
+    }
+    return response.json();
+}
+
+function adicionarLog(texto, tipo = 'info') {
+    const logElement = document.createElement('div');
+    logElement.textContent = texto;
+    logElement.className = `log ${tipo}`;
+    if(tipo === 'info-small') {
+        logElement.style.fontSize = '0.8em';
+        logElement.style.color = '#7f8c8d';
+    }
+    feedbackDiv.appendChild(logElement);
+    feedbackDiv.scrollTop = feedbackDiv.scrollHeight; 
+}
