@@ -27,18 +27,19 @@ const numerosTextarea = document.getElementById('numeros');
 const enviarBtn = document.getElementById('enviar-btn');
 const feedbackDiv = document.getElementById('feedback-envio');
 
+// Elementos do Preview
+const previewImagem = document.getElementById('preview-imagem');
+const previewMensagem = document.getElementById('preview-mensagem');
+
+
 // =============================================================================
-// --- LÓGICA PRINCIPAL E DE ESTADO ---
+// --- LÓGICA DE CONTROLE DAS TELAS E ESTADO ---
 // =============================================================================
 let qrCodePollingInterval = null;
 
 // Função que é executada assim que a página carrega
 document.addEventListener('DOMContentLoaded', () => {
     verificarStatusInicial();
-
-    // =============================================================================
-    // NOVO: Carregar a lista de contatos salva
-    // =============================================================================
     const listaSalva = localStorage.getItem('listaNumerosSalva');
     if (listaSalva) {
         numerosTextarea.value = listaSalva;
@@ -110,8 +111,9 @@ function iniciarPollingQrCode() {
 }
 
 // =============================================================================
-// --- LÓGICA DOS EVENTOS (CLICKS) ---
+// --- LÓGICA DOS EVENTOS (CLICKS e INPUTS) ---
 // =============================================================================
+
 async function executarLogout(event) {
     const btn = event.target;
     const originalText = btn.textContent;
@@ -132,10 +134,33 @@ async function executarLogout(event) {
 logoutBtnConexao.addEventListener('click', executarLogout);
 logoutBtnPrincipal.addEventListener('click', executarLogout);
 
+// Event listener para o campo de MENSAGEM para atualizar o preview
+mensagemTextarea.addEventListener('input', (event) => {
+    const texto = event.target.value;
+    previewMensagem.textContent = texto || "Sua mensagem aparecerá aqui...";
+});
+
+// Event listener para o campo de IMAGEM para atualizar o preview
+imagemInput.addEventListener('change', (event) => {
+    const arquivo = event.target.files[0];
+    if (arquivo) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            previewImagem.src = e.target.result;
+            previewImagem.style.display = 'block';
+        }
+        reader.readAsDataURL(arquivo);
+    } else {
+        previewImagem.src = '';
+        previewImagem.style.display = 'none';
+    }
+});
+
+
 form.addEventListener('submit', async function(event) {
     event.preventDefault(); 
     const mensagem = mensagemTextarea.value.trim();
-    const numerosTextoCompleto = numerosTextarea.value.trim(); // Pega o texto completo
+    const numerosTextoCompleto = numerosTextarea.value.trim();
     const numeros = numerosTextoCompleto.split('\n').filter(n => n);
     const imagemArquivo = imagemInput.files[0];
 
@@ -144,9 +169,6 @@ form.addEventListener('submit', async function(event) {
         return;
     }
     
-    // =============================================================================
-    // NOVO: Salvar a lista de contatos ao iniciar a campanha
-    // =============================================================================
     if (numerosTextoCompleto) {
         localStorage.setItem('listaNumerosSalva', numerosTextoCompleto);
         adicionarLog('Lista de contatos salva para uso futuro.', 'info-small');

@@ -33,24 +33,42 @@
             </header>
 
             <main>
-                <form id="campanha-form">
-                    <div class="form-group">
-                        <label for="mensagem">Mensagem da Campanha (será a legenda da imagem):</label>
-                        <textarea id="mensagem" rows="6" placeholder="Ex: Olá João! Temos uma promoção especial para você esta semana."></textarea>
+                <div class="main-content-wrapper">
+    
+                    <form id="campanha-form">
+                        <div class="form-group">
+                            <label for="mensagem">Mensagem da Campanha (será a legenda da imagem):</label>
+                            <textarea id="mensagem" rows="6" placeholder="Ex: Olá {nome}! Temos uma promoção especial para você esta semana."></textarea>
+                        </div>
+    
+                        <div class="form-group">
+                            <label for="imagem-input">Imagem da Campanha (Opcional):</label>
+                            <input type="file" id="imagem-input" accept="image/png, image/jpeg, image/gif">
+                        </div>
+    
+                        <div class="form-group">
+                            <label for="numeros">Lista de Números:</label>
+                            <textarea id="numeros" rows="10" placeholder="Cole um número por linha, no formato 5511999998888"></textarea>
+                        </div>
+    
+                        <button type="submit" id="enviar-btn">Enviar Campanha</button>
+                    </form>
+    
+                    <div class="preview-container">
+                        <label>Pré-visualização:</label>
+                        <div class="phone-mockup">
+                            <div class="chat-bubble">
+                                <img id="preview-imagem" src="" alt="Preview da imagem" style="display: none;">
+                                <div id="preview-mensagem">Sua mensagem aparecerá aqui...</div>
+                                <div class="timestamp-ticks">
+                                    <span>20:45</span>
+                                    <svg viewBox="0 0 18 18" height="18" width="18"><path fill="#34B7F1" d="M17.394 5.035l-.57-.444a.434.434 0 0 0-.612.078l-6.76 8.68-3.385-3.385a.434.434 0 0 0-.612 0l-.444.444a.434.434 0 0 0 0 .612l4.11 4.11a.434.434 0 0 0 .612 0l7.447-9.563a.434.434 0 0 0-.078-.612zm-8 0l-.57-.444a.434.434 0 0 0-.612.078l-6.76 8.68-1.146-1.146a.434.434 0 0 0-.612 0l-.444.444a.434.434 0 0 0 0 .612l2.227 2.227a.434.434 0 0 0 .612 0l7.447-9.563a.434.434 0 0 0-.078-.612z"></path></svg>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-
-                    <div class="form-group">
-                        <label for="imagem-input">Imagem da Campanha (Opcional):</label>
-                        <input type="file" id="imagem-input" accept="image/png, image/jpeg, image/gif">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="numeros">Lista de Números:</label>
-                        <textarea id="numeros" rows="10" placeholder="Cole um número por linha, no formato 5511999998888"></textarea>
-                    </div>
-
-                    <button type="submit" id="enviar-btn">Enviar Campanha</button>
-                </form>
+    
+                </div>
             </main>
 
             <footer>
