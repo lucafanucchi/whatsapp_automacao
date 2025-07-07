@@ -11,15 +11,20 @@
     <div class="container">
         <header>
             <h1>Painel de Campanhas WhatsApp</h1>
-            <p>Escreva sua mensagem, cole a lista de números e clique em enviar.</p>
-            <p class="aviso"><strong>Aviso:</strong> Para esta tela funcionar, o serviço do WhatsApp já deve ter sido conectado escaneando o QR Code nos logs do Render.</p>
+            <p>Escreva sua mensagem, anexe uma imagem (opcional), cole a lista de números e clique em enviar.</p>
+            <p class="aviso"><strong>Aviso:</strong> Para esta tela funcionar, o serviço do WhatsApp já deve ter sido conectado através da página <strong>conectar.html</strong>.</p>
         </header>
 
         <main>
             <form id="campanha-form">
                 <div class="form-group">
-                    <label for="mensagem">Mensagem da Campanha:</label>
-                    <textarea id="mensagem" rows="6" placeholder="Ex: Olá! Temos uma promoção especial para você esta semana."></textarea>
+                    <label for="mensagem">Mensagem da Campanha (será a legenda da imagem):</label>
+                    <textarea id="mensagem" rows="6" placeholder="Ex: Olá {nome}! Temos uma promoção especial para você esta semana."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="imagem-input">Imagem da Campanha (Opcional):</label>
+                    <input type="file" id="imagem-input" accept="image/png, image/jpeg, image/gif">
                 </div>
 
                 <div class="form-group">

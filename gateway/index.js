@@ -1,4 +1,3 @@
-// ... (imports e configurações iniciais continuam os mesmos)
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const express = require('express');
 const { Boom } = require('@hapi/boom');
@@ -13,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 let sock; 
 let qrCodeData = null;
 let connectionStatus = 'connecting'; 
-// ... (a função connectToWhatsApp continua a mesma)
+
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     sock = makeWASocket({ auth: state, printQRInTerminal: false });
@@ -36,7 +35,6 @@ async function connectToWhatsApp() {
     sock.ev.on('creds.update', saveCreds);
 }
 
-// ... (as rotas /status, /qr-code, e /logout continuam as mesmas)
 app.get('/status', (req, res) => {
     const isConnected = connectionStatus === 'open';
     res.json({ status: 'ok', connected: isConnected, connection_status: connectionStatus });
@@ -57,46 +55,44 @@ app.post('/logout', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: 'Falha ao fazer logout.' }); }
 });
 
-
-// =============================================================================
-// MUDANÇA ARQUITETURAL IMPORTANTE AQUI!
-// =============================================================================
 app.post('/send-message', (req, res) => {
-    const { number, message } = req.body;
+    const { number, message, imageUrl } = req.body;
 
     if (connectionStatus !== 'open') {
         return res.status(503).json({ success: false, message: 'Gateway não está conectado e autenticado ao WhatsApp.' });
     }
-    if (!number || !message) {
-        return res.status(400).json({ success: false, message: 'Os campos "number" e "message" são obrigatórios.' });
+    if (!number) { // A mensagem pode ser vazia se houver imagem
+        return res.status(400).json({ success: false, message: 'O campo "number" é obrigatório.' });
     }
 
-    // 1. Responde IMEDIATAMENTE para o backend, dizendo que o pedido foi aceito.
     res.status(202).json({ success: true, message: 'Pedido recebido. O envio será processado em segundo plano.' });
 
-    // 2. Tenta fazer o trabalho pesado de enviar a mensagem EM SEGUNDO PLANO.
     (async () => {
         try {
             const recipientId = `${number}@s.whatsapp.net`;
             console.log(`Processando envio em segundo plano para: ${number}`);
             
-            const [result] = await sock.onWhatsApp(recipientId);
-            if (!result || !result.exists) {
-                console.error(`FALHA (segundo plano): O número ${number} não existe no WhatsApp.`);
-                return;
+            let messageContent;
+            if (imageUrl) {
+                messageContent = {
+                    image: { url: imageUrl },
+                    caption: message
+                };
+            } else {
+                messageContent = {
+                    text: message
+                };
             }
-
-            await sock.sendMessage(recipientId, { text: message });
-            console.log(`SUCESSO (segundo plano): Mensagem enviada para ${number}`);
+            
+            await sock.sendMessage(recipientId, messageContent);
+            console.log(`SUCESSO (segundo plano): Mensagem com/sem imagem enviada para ${number}`);
 
         } catch (error) {
             console.error(`ERRO (segundo plano) ao tentar enviar para ${number}:`, error);
         }
-    })(); // A função é chamada imediatamente aqui
+    })();
 });
 
-
-// Inicia o servidor e a conexão
 app.listen(PORT, () => {
     console.log(`Gateway de WhatsApp rodando na porta ${PORT}`);
     connectToWhatsApp();

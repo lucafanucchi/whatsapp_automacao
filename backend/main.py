@@ -2,10 +2,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from pydantic import BaseModel
+from typing import Optional
 
 class MensagemPayload(BaseModel):
     numero: str
     mensagem: str
+    imagem_url: Optional[str] = None
 
 app = FastAPI(
     title="API de Automação de WhatsApp",
@@ -24,31 +26,14 @@ app.add_middleware(
 
 GATEWAY_URL = "http://whatsapp-gateway-a9iz:10000/send-message"
 
-# =============================================================================
-# NOVO ENDPOINT DE DEBUG
-# Para testar se o container no Render consegue fazer chamadas para a internet.
-# =============================================================================
-@app.get("/testar-conexao-externa")
-async def testar_conexao_externa():
-    print("Iniciando teste de conexão externa para https://api.publicapis.org/entries")
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get("https://api.publicapis.org/entries", timeout=15.0)
-        response.raise_for_status()
-        print("Conexão externa bem-sucedida!")
-        return {"status": "SUCESSO", "detail": "O container consegue fazer requisições HTTPS para a internet."}
-    except Exception as e:
-        print(f"FALHA na conexão externa: {e}")
-        raise HTTPException(status_code=500, detail=f"Falha ao conectar externamente: {e}")
-
 
 @app.post("/enviar-teste")
 async def enviar_mensagem_teste(payload: MensagemPayload):
-    print(f"Recebida requisição para enviar '{payload.mensagem}' para o número {payload.numero}")
-    
+    # Monta o payload para o gateway, agora incluindo a URL da imagem
     gateway_payload = {
         "number": payload.numero,
-        "message": payload.mensagem
+        "message": payload.mensagem,
+        "imageUrl": payload.imagem_url
     }
 
     try:
@@ -56,24 +41,13 @@ async def enviar_mensagem_teste(payload: MensagemPayload):
             response = await client.post(GATEWAY_URL, json=gateway_payload, timeout=30.0)
         
         response.raise_for_status() 
-        print("Gateway respondeu com sucesso.")
         return response.json()
+    except Exception as e:
+        print(f"Erro ao contatar o gateway: {e}")
+        raise HTTPException(status_code=503, detail="Não foi possível se comunicar com o Gateway de WhatsApp.")
 
-    except httpx.HTTPStatusError as e:
-        print(f"Erro de status do Gateway: {e.response.status_code}")
-        print(f"Detalhes: {e.response.text}")
-        raise HTTPException(status_code=e.response.status_code, detail=f"Erro no Gateway: {e.response.json()}")
-    except httpx.RequestError as e:
-        # =============================================================================
-        # MUDANÇA IMPORTANTE AQUI!
-        # Extraindo mais detalhes da exceção.
-        # =============================================================================
-        print("--- INÍCIO DO DEBUG DE ERRO HTTpx ---")
-        print(f"Tipo de exceção: {type(e)}")
-        print(f"Argumentos da exceção: {e.args}")
-        print(f"Requisição que falhou: {e.request}")
-        print("--- FIM DO DEBUG DE ERRO HTTpx ---")
-        raise HTTPException(status_code=503, detail="Não foi possível conectar ao Gateway de WhatsApp.")
+# Removeremos o endpoint de debug para limpar o código
+# @app.get("/testar-conexao-externa") ...
 
 @app.get("/")
 def ler_raiz():
