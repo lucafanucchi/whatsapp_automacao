@@ -5,43 +5,56 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Disparador de Campanhas WhatsApp</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
 </head>
 <body>
 
-    <div class="container">
-        <header>
-            <h1>Painel de Campanhas WhatsApp</h1>
-            <p>Escreva sua mensagem, anexe uma imagem (opcional), cole a lista de números e clique em enviar.</p>
-            <p class="aviso"><strong>Aviso:</strong> Para esta tela funcionar, o serviço do WhatsApp já deve ter sido conectado através da página <strong>conectar.html</strong>.</p>
-        </header>
+    <section id="tela-conexao" class="tela">
+        <div class="container-conexao">
+            <h1>Conectar ao WhatsApp</h1>
+            <p>Para usar o sistema, escaneie o QR Code abaixo com o seu app do WhatsApp.</p>
+            <div id="qrcode-container">
+                <div id="status-conexao">Aguardando QR Code do servidor...</div>
+            </div>
+            <button id="logout-btn" style="display: none;">Desconectar Sessão Atual</button>
+        </div>
+    </section>
 
-        <main>
-            <form id="campanha-form">
-                <div class="form-group">
-                    <label for="mensagem">Mensagem da Campanha (será a legenda da imagem):</label>
-                    <textarea id="mensagem" rows="6" placeholder="Ex: Olá {nome}! Temos uma promoção especial para você esta semana."></textarea>
-                </div>
+    <section id="tela-principal" class="tela" style="display: none;">
+         <div class="container">
+            <header>
+                <h1>Painel de Campanhas WhatsApp</h1>
+                <p>Escreva sua mensagem, anexe uma imagem (opcional), cole a lista de números e clique em enviar.</p>
+                <p class="status-online">Status: Conectado</p>
+            </header>
 
-                <div class="form-group">
-                    <label for="imagem-input">Imagem da Campanha (Opcional):</label>
-                    <input type="file" id="imagem-input" accept="image/png, image/jpeg, image/gif">
-                </div>
+            <main>
+                <form id="campanha-form">
+                    <div class="form-group">
+                        <label for="mensagem">Mensagem da Campanha (será a legenda da imagem):</label>
+                        <textarea id="mensagem" rows="6" placeholder="Ex: Olá {nome}! Temos uma promoção especial para você esta semana."></textarea>
+                    </div>
 
-                <div class="form-group">
-                    <label for="numeros">Lista de Números:</label>
-                    <textarea id="numeros" rows="10" placeholder="Cole um número por linha, no formato 5511999998888"></textarea>
-                </div>
+                    <div class="form-group">
+                        <label for="imagem-input">Imagem da Campanha (Opcional):</label>
+                        <input type="file" id="imagem-input" accept="image/png, image/jpeg, image/gif">
+                    </div>
 
-                <button type="submit" id="enviar-btn">Enviar Campanha</button>
-            </form>
-        </main>
+                    <div class="form-group">
+                        <label for="numeros">Lista de Números:</label>
+                        <textarea id="numeros" rows="10" placeholder="Cole um número por linha, no formato 5511999998888"></textarea>
+                    </div>
 
-        <footer>
-            <h3>Log de Envio:</h3>
-            <div id="feedback-envio" class="feedback">
-                </div>
-        </footer>
-    </div>
+                    <button type="submit" id="enviar-btn">Enviar Campanha</button>
+                </form>
+            </main>
+
+            <footer>
+                <h3>Log de Envio:</h3>
+                <div id="feedback-envio" class="feedback"></div>
+            </footer>
+        </div>
+    </section>
 
     <script src="script.js"></script>
 </body>
