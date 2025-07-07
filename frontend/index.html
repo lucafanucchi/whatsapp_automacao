@@ -11,21 +11,25 @@
 
     <section id="tela-conexao" class="tela">
         <div class="container-conexao">
+            <img src="https://res.cloudinary.com/di1axitma/image/upload/v1751855900/vzqqdv0b6p2eqqn9gze1.png" alt="Logo da Empresa" class="logo">
             <h1>Conectar ao WhatsApp</h1>
             <p>Para usar o sistema, escaneie o QR Code abaixo com o seu app do WhatsApp.</p>
             <div id="qrcode-container">
                 <div id="status-conexao">Aguardando QR Code do servidor...</div>
             </div>
-            <button id="logout-btn" style="display: none;">Desconectar Sessão Atual</button>
+            <button id="logout-btn" class="logout-btn-vermelho" style="display: none;">Desconectar Sessão Atual</button>
         </div>
     </section>
 
     <section id="tela-principal" class="tela" style="display: none;">
          <div class="container">
             <header>
-                <h1>Painel de Campanhas WhatsApp</h1>
-                <p>Escreva sua mensagem, anexe uma imagem (opcional), cole a lista de números e clique em enviar.</p>
-                <p class="status-online">Status: Conectado</p>
+                <img src="https://res.cloudinary.com/di1axitma/image/upload/v1751855900/vzqqdv0b6p2eqqn9gze1.png" alt="Logo da Empresa" class="logo">
+                <h1>Painel de Campanhas WhatsApp - Digital Six</h1>
+                <div class="header-status">
+                    <p class="status-online">Status: Conectado</p>
+                    <button id="logout-btn-principal" class="logout-btn-header">Desconectar</button>
+                </div>
             </header>
 
             <main>
