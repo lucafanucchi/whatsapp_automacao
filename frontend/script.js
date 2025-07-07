@@ -28,9 +28,23 @@ const enviarBtn = document.getElementById('enviar-btn');
 const feedbackDiv = document.getElementById('feedback-envio');
 
 // =============================================================================
-// --- LÓGICA DE CONTROLE DAS TELAS E ESTADO ---
+// --- LÓGICA PRINCIPAL E DE ESTADO ---
 // =============================================================================
 let qrCodePollingInterval = null;
+
+// Função que é executada assim que a página carrega
+document.addEventListener('DOMContentLoaded', () => {
+    verificarStatusInicial();
+
+    // =============================================================================
+    // NOVO: Carregar a lista de contatos salva
+    // =============================================================================
+    const listaSalva = localStorage.getItem('listaNumerosSalva');
+    if (listaSalva) {
+        numerosTextarea.value = listaSalva;
+        console.log('Lista de contatos recuperada do armazenamento local.');
+    }
+});
 
 function gerenciarVisibilidadeTelas(estaConectado) {
     if (estaConectado) {
@@ -57,13 +71,13 @@ async function verificarStatusInicial() {
         gerenciarVisibilidadeTelas(data.connected);
     } catch (error) {
         console.error("Erro ao verificar status inicial:", error);
-        statusConexaoDiv.textContent = '❌ Erro ao conectar com o servidor.';
+        statusConexaoDiv.textContent = '❌ Servidor offline. Tentando reconectar...';
         gerenciarVisibilidadeTelas(false);
     }
 }
 
 function iniciarPollingQrCode() {
-    if (qrCodePollingInterval) return; // Não inicia um novo loop se um já estiver rodando
+    if (qrCodePollingInterval) return;
 
     qrCodePollingInterval = setInterval(async () => {
         try {
@@ -82,20 +96,22 @@ function iniciarPollingQrCode() {
                 statusConexaoDiv.textContent = 'Escaneie o código para conectar.';
                 logoutBtnConexao.style.display = 'inline-block';
             } else {
-                statusConexaoDiv.textContent = 'Aguardando QR Code do servidor...';
-                qrContainer.innerHTML = '';
+                const qrCodeJaExibido = qrContainer.querySelector('canvas');
+                if (qrCodeJaExibido) {
+                    statusConexaoDiv.textContent = 'QR Code lido! Autenticando...';
+                } else {
+                    statusConexaoDiv.textContent = 'Aguardando QR Code do servidor...';
+                }
             }
         } catch (error) {
-            statusConexaoDiv.textContent = '❌ Erro ao buscar QR Code. Verificando novamente...';
+            statusConexaoDiv.textContent = '❌ Servidor offline. Tentando reconectar...';
         }
-    }, 4000);
+    }, 3000);
 }
 
 // =============================================================================
 // --- LÓGICA DOS EVENTOS (CLICKS) ---
 // =============================================================================
-document.addEventListener('DOMContentLoaded', verificarStatusInicial);
-
 async function executarLogout(event) {
     const btn = event.target;
     const originalText = btn.textContent;
@@ -119,7 +135,8 @@ logoutBtnPrincipal.addEventListener('click', executarLogout);
 form.addEventListener('submit', async function(event) {
     event.preventDefault(); 
     const mensagem = mensagemTextarea.value.trim();
-    const numeros = numerosTextarea.value.trim().split('\n').filter(n => n);
+    const numerosTextoCompleto = numerosTextarea.value.trim(); // Pega o texto completo
+    const numeros = numerosTextoCompleto.split('\n').filter(n => n);
     const imagemArquivo = imagemInput.files[0];
 
     if ((!mensagem && !imagemArquivo) || numeros.length === 0) {
@@ -127,6 +144,14 @@ form.addEventListener('submit', async function(event) {
         return;
     }
     
+    // =============================================================================
+    // NOVO: Salvar a lista de contatos ao iniciar a campanha
+    // =============================================================================
+    if (numerosTextoCompleto) {
+        localStorage.setItem('listaNumerosSalva', numerosTextoCompleto);
+        adicionarLog('Lista de contatos salva para uso futuro.', 'info-small');
+    }
+
     enviarBtn.disabled = true;
     enviarBtn.textContent = 'Enviando...';
     feedbackDiv.innerHTML = ''; 
@@ -160,7 +185,7 @@ form.addEventListener('submit', async function(event) {
             adicionarLog(`--> Falha: Erro ao enviar para ${numero}. Detalhes: ${error.message}`, 'error');
         }
         
-        const delayAleatorio = Math.floor(Math.random() * (25000 - 8000 + 1) + 8000);
+        const delayAleatorio = Math.floor(Math.random() * (15000 - 8000 + 1) + 8000);
         adicionarLog(`Aguardando ${(delayAleatorio / 1000).toFixed(1)} segundos...`, 'info-small');
         await new Promise(resolve => setTimeout(resolve, delayAleatorio));
     }
