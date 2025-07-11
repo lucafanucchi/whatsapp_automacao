@@ -7,7 +7,8 @@ from typing import Optional
 class MensagemPayload(BaseModel):
     numero: str
     mensagem: str
-    imagem_url: Optional[str] = None
+    anexo_url: Optional[str] = None # Renomeado para 'anexo'
+    file_name: Optional[str] = None # NOVO
 
 app = FastAPI(
     title="API de Automação de WhatsApp",
@@ -33,7 +34,8 @@ async def enviar_mensagem_teste(payload: MensagemPayload):
     gateway_payload = {
         "number": payload.numero,
         "message": payload.mensagem,
-        "imageUrl": payload.imagem_url
+        "anexoUrl": payload.anexo_url, # Renomeado
+        "fileName": payload.file_name  # NOVO
     }
 
     try:
