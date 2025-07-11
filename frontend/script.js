@@ -170,9 +170,9 @@ form.addEventListener('submit', async function(event) {
     const mensagem = mensagemTextarea.value.trim();
     const numerosTextoCompleto = numerosTextarea.value.trim();
     const numeros = numerosTextoCompleto.split('\n').filter(n => n);
-    const imagemArquivo = imagemInput.files[0];
+    const anexoArquivo = imagemInput.files[0];
 
-    if ((!mensagem && !imagemArquivo) || numeros.length === 0) {
+    if ((!mensagem && !anexoArquivo) || numeros.length === 0) {
         adicionarLog('É necessário ter uma mensagem ou uma imagem, e uma lista de números.', 'error');
         return;
     }
@@ -186,12 +186,12 @@ form.addEventListener('submit', async function(event) {
     enviarBtn.textContent = 'Enviando...';
     feedbackDiv.innerHTML = ''; 
     
-    let imageUrl = null;
-    if (imagemArquivo) {
+    let anexoUrl = null;
+    if (anexoArquivo) {
         adicionarLog('Fazendo upload do arquivo para a nuvem...');
         try {
-            imageUrl = await uploadImagemParaCloudinary(imagemArquivo);
-            adicionarLog(`Upload concluído: ${imageUrl}`, 'success');
+            anexoUrl = await uploadImagemParaCloudinary(anexoArquivo);
+            adicionarLog(`Upload concluído: ${anexoUrl}`, 'success');
             
             const segundosDePausa = 5;
             adicionarLog(`Aguardando ${segundosDePausa} segundos para o arquivo se propagar na nuvem...`, 'info-small');
@@ -209,7 +209,7 @@ form.addEventListener('submit', async function(event) {
     for (const numero of numeros) {
         adicionarLog(`Tentando enviar para ${numero}...`);
         try {
-            await enviarMensagemParaBackend(numero, mensagem, imageUrl);
+            await enviarMensagemParaBackend(numero, mensagem, anexoUrl);
             adicionarLog(`--> Sucesso: Pedido para ${numero} foi aceito pelo servidor.`, 'success');
         } catch (error) {
             adicionarLog(`--> Falha: Erro ao enviar para ${numero}. Detalhes: ${error.message}`, 'error');
