@@ -255,12 +255,13 @@ async function uploadImagemParaCloudinary(arquivo) {
     return data.secure_url;
 }
 
-async function enviarMensagemParaBackend(numero, mensagem, imagemUrl = null) {
+async function enviarMensagemParaBackend(numero, mensagem, anexoUrl = null, fileName = null) {
     const endpoint = `${BACKEND_URL}/enviar-teste`;
     const payload = {
         numero: numero.trim(),
         mensagem: mensagem,
-        imagem_url: imagemUrl
+        anexo_url: anexoUrl,
+        file_name: fileName
     };
     const response = await fetch(endpoint, {
         method: 'POST',
