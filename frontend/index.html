@@ -42,8 +42,8 @@
                         </div>
     
                         <div class="form-group">
-                            <label for="imagem-input">Imagem da Campanha (Opcional):</label>
-                            <input type="file" id="imagem-input" accept="image/png, image/jpeg, image/gif">
+                            <label for="imagem-input">Imagem ou PDF da Campanha (Opcional):</label>
+                            <input type="file" id="imagem-input" accept="image/png, image/jpeg, image/gif, application/pdf">
                         </div>
     
                         <div class="form-group">
@@ -59,6 +59,10 @@
                         <div class="phone-mockup">
                             <div class="chat-bubble">
                                 <img id="preview-imagem" src="" alt="Preview da imagem" style="display: none;">
+                                <div id="preview-pdf-container" style="display: none;">
+                                    <svg class="pdf-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zM9.423 6.99h5.163c.433 0 .785.352.785.785v1.834c0 .433-.352.785-.785.785H9.423a.785.785 0 0 1-.785-.785V7.775c0-.433.352-.785.785-.785zm7.398 8.65H7.179a.785.785 0 0 1-.723-1.09l1.93-4.398a.785.785 0 0 1 .722-.48h5.81c.36 0 .678.24.767.583l1.815 4.607a.785.785 0 0 1-.715 1.176z"></path></svg>
+                                    <span id="preview-pdf-filename">nome-do-arquivo.pdf</span>
+                                </div>
                                 <div id="preview-mensagem">Sua mensagem aparecerá aqui...</div>
                                 <div class="timestamp-ticks">
                                     <span>20:45</span>

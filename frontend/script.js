@@ -30,10 +30,12 @@ const feedbackDiv = document.getElementById('feedback-envio');
 // Elementos do Preview
 const previewImagem = document.getElementById('preview-imagem');
 const previewMensagem = document.getElementById('preview-mensagem');
+const previewPdfContainer = document.getElementById('preview-pdf-container');
+const previewPdfFilename = document.getElementById('preview-pdf-filename');
 
 
 // =============================================================================
-// --- LÓGICA DE CONTROLE DAS TELAS E ESTADO ---
+// --- LÓGICA PRINCIPAL E DE ESTADO ---
 // =============================================================================
 let qrCodePollingInterval = null;
 
@@ -134,25 +136,34 @@ async function executarLogout(event) {
 logoutBtnConexao.addEventListener('click', executarLogout);
 logoutBtnPrincipal.addEventListener('click', executarLogout);
 
-// Event listener para o campo de MENSAGEM para atualizar o preview
 mensagemTextarea.addEventListener('input', (event) => {
     const texto = event.target.value;
     previewMensagem.textContent = texto || "Sua mensagem aparecerá aqui...";
 });
 
-// Event listener para o campo de IMAGEM para atualizar o preview
 imagemInput.addEventListener('change', (event) => {
     const arquivo = event.target.files[0];
+
+    // Primeiro, esconde todos os previews para limpar o estado
+    previewImagem.style.display = 'none';
+    previewPdfContainer.style.display = 'none';
+    previewImagem.src = '';
+
     if (arquivo) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            previewImagem.src = e.target.result;
-            previewImagem.style.display = 'block';
+        // Se for PDF, mostra o preview de PDF
+        if (arquivo.type === "application/pdf") {
+            previewPdfFilename.textContent = arquivo.name;
+            previewPdfContainer.style.display = 'flex';
+        } 
+        // Se for imagem, mostra o preview de imagem
+        else if (arquivo.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                previewImagem.src = e.target.result;
+                previewImagem.style.display = 'block';
+            }
+            reader.readAsDataURL(arquivo);
         }
-        reader.readAsDataURL(arquivo);
-    } else {
-        previewImagem.src = '';
-        previewImagem.style.display = 'none';
     }
 });
 
@@ -180,16 +191,16 @@ form.addEventListener('submit', async function(event) {
     
     let imageUrl = null;
     if (imagemArquivo) {
-        adicionarLog('Fazendo upload da imagem para a nuvem...');
+        adicionarLog('Fazendo upload do arquivo para a nuvem...');
         try {
             imageUrl = await uploadImagemParaCloudinary(imagemArquivo);
             adicionarLog(`Upload concluído: ${imageUrl}`, 'success');
             
             const segundosDePausa = 5;
-            adicionarLog(`Aguardando ${segundosDePausa} segundos para a imagem se propagar na nuvem...`, 'info-small');
+            adicionarLog(`Aguardando ${segundosDePausa} segundos para o arquivo se propagar na nuvem...`, 'info-small');
             await new Promise(resolve => setTimeout(resolve, segundosDePausa * 1000));
         } catch (error) {
-            adicionarLog(`Falha no upload da imagem: ${error.message}`, 'error');
+            adicionarLog(`Falha no upload do arquivo: ${error.message}`, 'error');
             enviarBtn.disabled = false;
             enviarBtn.textContent = 'Enviar Campanha';
             return;
@@ -224,7 +235,10 @@ async function uploadImagemParaCloudinary(arquivo) {
     const formData = new FormData();
     formData.append('file', arquivo);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    formData.append('resource_type', 'auto');
+
     const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+    
     const response = await fetch(cloudinaryUrl, {
         method: 'POST',
         body: formData,

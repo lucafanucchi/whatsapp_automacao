@@ -277,3 +277,30 @@ footer {
     font-size: 0.8em;
     color: #7f8c8d;
 }
+
+/* NOVO: Estilos para o container do preview de PDF */
+#preview-pdf-container {
+    background-color: #F5F5F5; /* Um cinza claro de fundo */
+    border: 1px solid #E0E0E0;
+    border-radius: 6px;
+    padding: 10px;
+    display: flex; /* Para alinhar o ícone e o texto */
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 5px;
+}
+
+.pdf-icon {
+    width: 24px;
+    height: 24px;
+    color: #D32F2F; /* Vermelho do ícone de PDF */
+    flex-shrink: 0; /* Impede que o ícone seja esmagado */
+}
+
+#preview-pdf-filename {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; /* Adiciona "..." se o nome do arquivo for muito longo */
+}

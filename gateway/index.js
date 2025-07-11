@@ -55,14 +55,18 @@ app.post('/logout', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: 'Falha ao fazer logout.' }); }
 });
 
+
 app.post('/send-message', (req, res) => {
     const { number, message, imageUrl } = req.body;
 
     if (connectionStatus !== 'open') {
         return res.status(503).json({ success: false, message: 'Gateway não está conectado e autenticado ao WhatsApp.' });
     }
-    if (!number) { // A mensagem pode ser vazia se houver imagem
+    if (!number) {
         return res.status(400).json({ success: false, message: 'O campo "number" é obrigatório.' });
+    }
+    if (!message && !imageUrl) {
+        return res.status(400).json({ success: false, message: 'A mensagem não pode estar vazia sem um anexo.' });
     }
 
     res.status(202).json({ success: true, message: 'Pedido recebido. O envio será processado em segundo plano.' });
@@ -73,19 +77,37 @@ app.post('/send-message', (req, res) => {
             console.log(`Processando envio em segundo plano para: ${number}`);
             
             let messageContent;
+            
+            // =============================================================================
+            // LÓGICA ATUALIZADA PARA DIFERENCIAR IMAGEM DE PDF
+            // =============================================================================
             if (imageUrl) {
-                messageContent = {
-                    image: { url: imageUrl },
-                    caption: message
-                };
+                // Verifica se a URL, em minúsculas, termina com .pdf
+                if (imageUrl.toLowerCase().endsWith('.pdf')) {
+                    // Se for PDF, monta um objeto de documento
+                    messageContent = {
+                        document: { url: imageUrl },
+                        caption: message,
+                        fileName: "Documento.pdf" // Nome que aparecerá para o cliente no WhatsApp
+                    };
+                    console.log(`Preparando para enviar PDF para ${number}`);
+                } else {
+                    // Senão, trata como imagem (comportamento que já tínhamos)
+                    messageContent = {
+                        image: { url: imageUrl },
+                        caption: message
+                    };
+                    console.log(`Preparando para enviar Imagem para ${number}`);
+                }
             } else {
+                // Se não houver URL, envia só texto
                 messageContent = {
                     text: message
                 };
             }
             
             await sock.sendMessage(recipientId, messageContent);
-            console.log(`SUCESSO (segundo plano): Mensagem com/sem imagem enviada para ${number}`);
+            console.log(`SUCESSO (segundo plano): Mensagem com/sem anexo enviada para ${number}`);
 
         } catch (error) {
             console.error(`ERRO (segundo plano) ao tentar enviar para ${number}:`, error);
