@@ -2,7 +2,7 @@
 // --- CONFIGURAÇÃO PRINCIPAL ---
 // =============================================================================
 const CLOUDINARY_CLOUD_NAME = "di1axitma";
-const CLOUDINARY_UPLOAD_PRESET = "whatsapp_publico"; // Usando o preset correto que criamos
+const CLOUDINARY_UPLOAD_PRESET = "ml_default"; // Usando o preset correto que criamos
 const BACKEND_URL = "https://whatsapp-backend-km3f.onrender.com";
 const GATEWAY_URL = "https://whatsapp-gateway-a9iz.onrender.com";
 
