@@ -107,7 +107,7 @@ function iniciarPollingQrCode() {
                 }
             }
         } catch (error) {
-            statusConexaoDiv.textContent = '❌ Servidor Reconectando. Aguarde...';
+            statusConexaoDiv.textContent = '❌ Servidor offline. Tentando reconectar...';
         }
     }, 3000);
 }
@@ -136,13 +136,11 @@ async function executarLogout(event) {
 logoutBtnConexao.addEventListener('click', executarLogout);
 logoutBtnPrincipal.addEventListener('click', executarLogout);
 
-// Event listener para o campo de MENSAGEM para atualizar o preview
 mensagemTextarea.addEventListener('input', (event) => {
     const texto = event.target.value;
     previewMensagem.textContent = texto || "Sua mensagem aparecerá aqui...";
 });
 
-// Event listener para o campo de ARQUIVO para atualizar o preview
 imagemInput.addEventListener('change', (event) => {
     const arquivo = event.target.files[0];
 
@@ -237,13 +235,9 @@ async function uploadImagemParaCloudinary(arquivo) {
     const formData = new FormData();
     formData.append('file', arquivo);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-    
-    let resourceType = 'image';
-    if (arquivo.type === "application/pdf") {
-        resourceType = 'raw';
-    }
+    formData.append('resource_type', 'auto');
 
-    const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
+    const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
     
     const response = await fetch(cloudinaryUrl, {
         method: 'POST',
