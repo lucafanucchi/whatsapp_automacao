@@ -235,7 +235,6 @@ async function uploadImagemParaCloudinary(arquivo) {
     
     // Força o modo de acesso público para o arquivo no momento do upload.
     // Esta é a correção para o erro 401 Unauthorized com PDFs.
-    formData.append('access_mode', 'public');
 
     let resourceType = 'image';
     if (arquivo.type === "application/pdf") {
