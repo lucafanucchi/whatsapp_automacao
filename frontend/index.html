@@ -37,13 +37,13 @@
     
                     <form id="campanha-form">
                         <div class="form-group">
-                            <label for="mensagem">Mensagem da Campanha (será a legenda da imagem):</label>
+                            <label for="mensagem">Mensagem da Campanha (será a legenda do anexo):</label>
                             <textarea id="mensagem" rows="6" placeholder="Ex: Olá {nome}! Temos uma promoção especial para você esta semana."></textarea>
                         </div>
     
                         <div class="form-group">
-                            <label for="imagem-input">Imagem ou PDF da Campanha (Opcional):</label>
-                            <input type="file" id="imagem-input" accept="image/png, image/jpeg, image/gif, application/pdf">
+                            <label for="anexo-input">Imagem, PDF ou Vídeo da Campanha (Opcional):</label>
+                            <input type="file" id="anexo-input" accept="image/*, application/pdf, video/mp4, video/quicktime">
                         </div>
     
                         <div class="form-group">
@@ -59,14 +59,18 @@
                         <div class="phone-mockup">
                             <div class="chat-bubble">
                                 <img id="preview-imagem" src="" alt="Preview da imagem" style="display: none;">
+                                
                                 <div id="preview-pdf-container" style="display: none;">
-                                    <svg class="pdf-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zM9.423 6.99h5.163c.433 0 .785.352.785.785v1.834c0 .433-.352.785-.785.785H9.423a.785.785 0 0 1-.785-.785V7.775c0-.433.352-.785.785-.785zm7.398 8.65H7.179a.785.785 0 0 1-.723-1.09l1.93-4.398a.785.785 0 0 1 .722-.48h5.81c.36 0 .678.24.767.583l1.815 4.607a.785.785 0 0 1-.715 1.176z"></path></svg>
+                                    <svg class="pdf-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zM9.423 6.99h5.163c.433 0 .785.352.785.785v1.834c0 .433-.352.785-.785.785H9.423a.785.785 0 0 1-.785-.785V7.775c0-.433.352-.785.785-.785zm7.398 8.65H7.179a.785.a785 0 0 1-.723-1.09l1.93-4.398a.785.785 0 0 1 .722-.48h5.81c.36 0 .678.24.767.583l1.815 4.607a.785.785 0 0 1-.715 1.176z"></path></svg>
                                     <span id="preview-pdf-filename">nome-do-arquivo.pdf</span>
                                 </div>
+
+                                <video id="preview-video" style="display: none;" controls muted></video>
+                                
                                 <div id="preview-mensagem">Sua mensagem aparecerá aqui...</div>
                                 <div class="timestamp-ticks">
                                     <span>20:45</span>
-                                    <svg viewBox="0 0 18 18" height="18" width="18"><path fill="#34B7F1" d="M17.394 5.035l-.57-.444a.434.434 0 0 0-.612.078l-6.76 8.68-3.385-3.385a.434.434 0 0 0-.612 0l-.444.444a.434.434 0 0 0 0 .612l4.11 4.11a.434.434 0 0 0 .612 0l7.447-9.563a.434.434 0 0 0-.078-.612zm-8 0l-.57-.444a.434.434 0 0 0-.612.078l-6.76 8.68-1.146-1.146a.434.434 0 0 0-.612 0l-.444.444a.434.434 0 0 0 0 .612l2.227 2.227a.434.434 0 0 0 .612 0l7.447-9.563a.434.434 0 0 0-.078-.612z"></path></svg>
+                                    <svg viewBox="0 0 18 18" height="18" width="18"><path fill="#34B7F1" d="M17.394 5.035l-.57-.444a.434.434 0 0 0-.612.078l-6.76 8.68-3.385-3.385a.434.434 0 0 0-.612 0l-.444.444a.434.434 0 0 0 0 .612l4.11 4.11a.434.a434 0 0 0 .612 0l7.447-9.563a.434.434 0 0 0-.078-.612zm-8 0l-.57-.444a.434.434 0 0 0-.612.078l-6.76 8.68-1.146-1.146a.434.434 0 0 0-.612 0l-.444.444a.434.434 0 0 0 0 .612l2.227 2.227a.434.434 0 0 0 .612 0l7.447-9.563a.434.434 0 0 0-.078-.612z"></path></svg>
                                 </div>
                             </div>
                         </div>

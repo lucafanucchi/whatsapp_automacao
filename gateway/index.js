@@ -62,11 +62,8 @@ app.post('/send-message', (req, res) => {
     if (connectionStatus !== 'open') {
         return res.status(503).json({ success: false, message: 'Gateway não está conectado e autenticado ao WhatsApp.' });
     }
-    if (!number) {
-        return res.status(400).json({ success: false, message: 'O campo "number" é obrigatório.' });
-    }
-    if (!message && !anexoUrl) {
-        return res.status(400).json({ success: false, message: 'A mensagem não pode estar vazia sem um anexo.' });
+    if (!number || (!message && !anexoUrl)) {
+        return res.status(400).json({ success: false, message: 'Requisição inválida.' });
     }
 
     res.status(202).json({ success: true, message: 'Pedido recebido. O envio será processado em segundo plano.' });
@@ -79,20 +76,30 @@ app.post('/send-message', (req, res) => {
             let messageContent;
             
             // =============================================================================
-            // LÓGICA ATUALIZADA PARA DIFERENCIAR IMAGEM DE PDF
+            // LÓGICA FINAL PARA LIDAR COM IMAGEM, PDF E VÍDEO
             // =============================================================================
             if (anexoUrl) {
-                // Verifica se a URL, em minúsculas, termina com .pdf
-                if (anexoUrl.toLowerCase().endsWith('.pdf')) {
+                const lowerCaseUrl = anexoUrl.toLowerCase();
+                
+                if (lowerCaseUrl.endsWith('.pdf')) {
                     // Se for PDF, monta um objeto de documento
                     messageContent = {
                         document: { url: anexoUrl },
                         caption: message,
-                        fileName: fileName || "Documento.pdf" // Nome que aparecerá para o cliente no WhatsApp
+                        fileName: fileName || "Documento.pdf"
                     };
                     console.log(`Preparando para enviar PDF para ${number}`);
+
+                } else if (lowerCaseUrl.endsWith('.mp4') || lowerCaseUrl.endsWith('.mov')) {
+                    // Se for Vídeo, monta um objeto de vídeo
+                    messageContent = {
+                        video: { url: anexoUrl },
+                        caption: message
+                    };
+                    console.log(`Preparando para enviar Vídeo para ${number}`);
+
                 } else {
-                    // Senão, trata como imagem (comportamento que já tínhamos)
+                    // Senão, trata como imagem (padrão para .png, .jpg, etc.)
                     messageContent = {
                         image: { url: anexoUrl },
                         caption: message
@@ -107,7 +114,7 @@ app.post('/send-message', (req, res) => {
             }
             
             await sock.sendMessage(recipientId, messageContent);
-            console.log(`SUCESSO (segundo plano): Mensagem com/sem anexo enviada para ${number}`);
+            console.log(`SUCESSO (segundo plano): Mensagem com anexo enviada para ${number}`);
 
         } catch (error) {
             console.error(`ERRO (segundo plano) ao tentar enviar para ${number}:`, error);

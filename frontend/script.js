@@ -2,35 +2,44 @@
 // --- CONFIGURAÇÃO PRINCIPAL ---
 // =============================================================================
 const CLOUDINARY_CLOUD_NAME = "di1axitma";
-const CLOUDINARY_UPLOAD_PRESET = "ml_default"; // Usando o preset correto que criamos
+const CLOUDINARY_UPLOAD_PRESET = "whatsapp_publico"; // Usando o preset correto que criamos
 const BACKEND_URL = "https://whatsapp-backend-km3f.onrender.com";
 const GATEWAY_URL = "https://whatsapp-gateway-a9iz.onrender.com";
 
 // =============================================================================
 // --- SELEÇÃO DE ELEMENTOS DO DOM ---
 // =============================================================================
+// Telas
 const telaConexao = document.getElementById('tela-conexao');
 const telaPrincipal = document.getElementById('tela-principal');
+
+// Elementos da Tela de Conexão
 const qrContainer = document.getElementById('qrcode-container');
 const statusConexaoDiv = document.getElementById('status-conexao');
 const logoutBtnConexao = document.getElementById('logout-btn');
+
+// Elementos da Tela Principal
 const logoutBtnPrincipal = document.getElementById('logout-btn-principal');
 const form = document.getElementById('campanha-form');
 const mensagemTextarea = document.getElementById('mensagem');
-const imagemInput = document.getElementById('imagem-input');
+const anexoInput = document.getElementById('anexo-input');
 const numerosTextarea = document.getElementById('numeros');
 const enviarBtn = document.getElementById('enviar-btn');
 const feedbackDiv = document.getElementById('feedback-envio');
+
+// Elementos do Preview
 const previewImagem = document.getElementById('preview-imagem');
 const previewMensagem = document.getElementById('preview-mensagem');
 const previewPdfContainer = document.getElementById('preview-pdf-container');
 const previewPdfFilename = document.getElementById('preview-pdf-filename');
+const previewVideo = document.getElementById('preview-video');
 
 // =============================================================================
 // --- LÓGICA DE EVENTOS E ESTADO ---
 // =============================================================================
 let qrCodePollingInterval = null;
 
+// Roda tudo quando a página carrega
 document.addEventListener('DOMContentLoaded', () => {
     verificarStatusInicial();
     const listaSalva = localStorage.getItem('listaNumerosSalva');
@@ -39,40 +48,57 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// Listener do campo de MENSAGEM para o preview
 mensagemTextarea.addEventListener('input', (event) => {
     const texto = event.target.value;
     previewMensagem.textContent = texto || "Sua mensagem aparecerá aqui...";
 });
 
-imagemInput.addEventListener('change', (event) => {
+// Listener do campo de ANEXO para o preview (agora lida com tudo)
+anexoInput.addEventListener('change', (event) => {
     const arquivo = event.target.files[0];
+
+    // Esconde todos os previews para começar do zero
     previewImagem.style.display = 'none';
     previewPdfContainer.style.display = 'none';
+    previewVideo.style.display = 'none';
     previewImagem.src = '';
+    previewVideo.src = '';
+
+
     if (arquivo) {
-        if (arquivo.type === "application/pdf") {
-            previewPdfFilename.textContent = arquivo.name;
-            previewPdfContainer.style.display = 'flex';
-        } else if (arquivo.type.startsWith('image/')) {
+        if (arquivo.type.startsWith('image/')) {
             const reader = new FileReader();
             reader.onload = function (e) {
                 previewImagem.src = e.target.result;
                 previewImagem.style.display = 'block';
             }
             reader.readAsDataURL(arquivo);
+        } else if (arquivo.type === "application/pdf") {
+            previewPdfFilename.textContent = arquivo.name;
+            previewPdfContainer.style.display = 'flex';
+        } else if (arquivo.type.startsWith('video/')) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                previewVideo.src = e.target.result;
+                previewVideo.style.display = 'block';
+            }
+            reader.readAsDataURL(arquivo);
         }
     }
 });
 
+
+// Listener do formulário de ENVIO DE CAMPANHA
 form.addEventListener('submit', async function (event) {
     event.preventDefault();
     const mensagem = mensagemTextarea.value.trim();
     const numerosTextoCompleto = numerosTextarea.value.trim();
     const numeros = numerosTextoCompleto.split('\n').filter(n => n);
-    const anexoArquivo = imagemInput.files[0];
+    const anexoArquivo = anexoInput.files[0];
 
     if ((!mensagem && !anexoArquivo) || numeros.length === 0) {
-        adicionarLog('É necessário ter uma mensagem ou uma imagem/pdf, e uma lista de números.', 'error');
+        adicionarLog('É necessário ter uma mensagem ou um anexo, e uma lista de números.', 'error');
         return;
     }
 
@@ -91,6 +117,7 @@ form.addEventListener('submit', async function (event) {
         try {
             anexoUrl = await uploadAnexoParaCloudinary(anexoArquivo);
             adicionarLog(`Upload concluído: ${anexoUrl}`, 'success');
+            
             const segundosDePausa = 5;
             adicionarLog(`Aguardando ${segundosDePausa} segundos para o arquivo se propagar na nuvem...`, 'info-small');
             await new Promise(resolve => setTimeout(resolve, segundosDePausa * 1000));
@@ -122,55 +149,14 @@ form.addEventListener('submit', async function (event) {
     enviarBtn.textContent = 'Enviar Campanha';
 });
 
+// Listeners dos botões de LOGOUT
 logoutBtnConexao.addEventListener('click', executarLogout);
 logoutBtnPrincipal.addEventListener('click', executarLogout);
+
 
 // =============================================================================
 // --- FUNÇÕES PRINCIPAIS E AUXILIARES ---
 // =============================================================================
-
-async function uploadAnexoParaCloudinary(arquivo) {
-    const formData = new FormData();
-    formData.append('file', arquivo);
-    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-    // VOLTANDO PARA A LÓGICA ORIGINAL: Deixar o Cloudinary detectar o tipo.
-    formData.append('resource_type', 'auto');
-
-    // Usando apenas o endpoint de imagem, que com 'resource_type: auto' é inteligente.
-    const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
-    
-    const response = await fetch(cloudinaryUrl, {
-        method: 'POST',
-        body: formData,
-    });
-    if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error.message || 'Erro desconhecido no Cloudinary');
-    }
-    const data = await response.json();
-    return data.secure_url;
-}
-
-async function enviarMensagemParaBackend(numero, mensagem, anexoUrl = null, fileName = null) {
-    const endpoint = `${BACKEND_URL}/enviar-teste`;
-    const payload = {
-        numero: numero.trim(),
-        mensagem: mensagem,
-        anexo_url: anexoUrl,
-        file_name: fileName
-    };
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-        const errorData = await response.json();
-        const errorMessage = errorData.detail || JSON.stringify(errorData);
-        throw new Error(errorMessage);
-    }
-    return response.json();
-}
 
 function gerenciarVisibilidadeTelas(estaConectado) {
     if (estaConectado) {
@@ -238,14 +224,86 @@ async function executarLogout(event) {
     btn.disabled = true;
     btn.textContent = 'Desconectando...';
     try {
-        await fetch(`${GATEWAY_URL}/logout`, { method: 'POST' });
-        statusConexaoDiv.textContent = 'Sessão encerrada com sucesso. Recarregando...';
-        setTimeout(() => window.location.reload(), 1500);
+        // Manda o comando de logout, mas não espera pela resposta
+        fetch(`${GATEWAY_URL}/logout`, { method: 'POST' });
+
+        // Para qualquer loop de verificação que esteja rodando
+        if (qrCodePollingInterval) clearInterval(qrCodePollingInterval);
+        
+        // Imediatamente muda para a tela de conexão e avisa o usuário
+        telaPrincipal.style.display = 'none';
+        telaConexao.style.display = 'flex';
+        qrContainer.innerHTML = '';
+        statusConexaoDiv.textContent = 'Servidor reiniciando após logout. Aguarde...';
+
+        // Inicia um novo loop para verificar QUANDO o servidor voltar
+        const restartPoll = setInterval(async () => {
+            try {
+                const response = await fetch(`${GATEWAY_URL}/status`);
+                // Se a resposta for OK, o servidor voltou!
+                if (response.ok) {
+                    clearInterval(restartPoll); // Para este loop de verificação
+                    console.log("Servidor online novamente. Iniciando busca por QR code.");
+                    iniciarPollingQrCode(); // Começa o processo normal de buscar QR code
+                }
+            } catch (e) {
+                // É esperado que dê erro enquanto o servidor reinicia, então não fazemos nada.
+                console.log("Servidor ainda não respondeu, tentando novamente...");
+            }
+        }, 3000); // Check every 3 seconds
+
     } catch (error) {
-        alert("Falha ao encerrar sessão. Verifique o console.");
+        alert("Falha crítica ao tentar deslogar.");
         btn.disabled = false;
         btn.textContent = originalText;
     }
+}
+
+async function uploadAnexoParaCloudinary(arquivo) {
+    const formData = new FormData();
+    formData.append('file', arquivo);
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    
+    let resourceType = 'image';
+    if (arquivo.type === "application/pdf") {
+        resourceType = 'raw';
+    } else if (arquivo.type.startsWith('video/')) {
+        resourceType = 'video';
+    }
+
+    const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
+    
+    const response = await fetch(cloudinaryUrl, {
+        method: 'POST',
+        body: formData,
+    });
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error.message || 'Erro desconhecido no Cloudinary');
+    }
+    const data = await response.json();
+    return data.secure_url;
+}
+
+async function enviarMensagemParaBackend(numero, mensagem, anexoUrl = null, fileName = null) {
+    const endpoint = `${BACKEND_URL}/enviar-teste`;
+    const payload = {
+        numero: numero.trim(),
+        mensagem: mensagem,
+        anexo_url: anexoUrl,
+        file_name: fileName
+    };
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.detail || JSON.stringify(errorData);
+        throw new Error(errorMessage);
+    }
+    return response.json();
 }
 
 function adicionarLog(texto, tipo = 'info') {
