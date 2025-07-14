@@ -17,7 +17,7 @@ const logoutBtnConexao = document.getElementById('logout-btn');
 const logoutBtnPrincipal = document.getElementById('logout-btn-principal');
 const form = document.getElementById('campanha-form');
 const mensagemTextarea = document.getElementById('mensagem');
-const imagemInput = document.getElementById('imagem-input');
+const anexoInput = document.getElementById('anexo-input');
 const numerosTextarea = document.getElementById('numeros');
 const enviarBtn = document.getElementById('enviar-btn');
 const feedbackDiv = document.getElementById('feedback-envio');
@@ -25,6 +25,7 @@ const previewImagem = document.getElementById('preview-imagem');
 const previewMensagem = document.getElementById('preview-mensagem');
 const previewPdfContainer = document.getElementById('preview-pdf-container');
 const previewPdfFilename = document.getElementById('preview-pdf-filename');
+const previewVideo = document.getElementById('preview-video');
 
 // =============================================================================
 // --- LÓGICA DE EVENTOS E ESTADO ---
@@ -44,20 +45,30 @@ mensagemTextarea.addEventListener('input', (event) => {
     previewMensagem.textContent = texto || "Sua mensagem aparecerá aqui...";
 });
 
-imagemInput.addEventListener('change', (event) => {
+anexoInput.addEventListener('change', (event) => {
     const arquivo = event.target.files[0];
     previewImagem.style.display = 'none';
     previewPdfContainer.style.display = 'none';
+    previewVideo.style.display = 'none';
     previewImagem.src = '';
+    previewVideo.src = '';
+
     if (arquivo) {
-        if (arquivo.type === "application/pdf") {
-            previewPdfFilename.textContent = arquivo.name;
-            previewPdfContainer.style.display = 'flex';
-        } else if (arquivo.type.startsWith('image/')) {
+        if (arquivo.type.startsWith('image/')) {
             const reader = new FileReader();
             reader.onload = function (e) {
                 previewImagem.src = e.target.result;
                 previewImagem.style.display = 'block';
+            }
+            reader.readAsDataURL(arquivo);
+        } else if (arquivo.type === "application/pdf") {
+            previewPdfFilename.textContent = arquivo.name;
+            previewPdfContainer.style.display = 'flex';
+        } else if (arquivo.type.startsWith('video/')) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                previewVideo.src = e.target.result;
+                previewVideo.style.display = 'block';
             }
             reader.readAsDataURL(arquivo);
         }
@@ -69,10 +80,10 @@ form.addEventListener('submit', async function (event) {
     const mensagem = mensagemTextarea.value.trim();
     const numerosTextoCompleto = numerosTextarea.value.trim();
     const numeros = numerosTextoCompleto.split('\n').filter(n => n);
-    const anexoArquivo = imagemInput.files[0];
+    const anexoArquivo = anexoInput.files[0];
 
     if ((!mensagem && !anexoArquivo) || numeros.length === 0) {
-        adicionarLog('É necessário ter uma mensagem ou uma imagem/pdf, e uma lista de números.', 'error');
+        adicionarLog('É necessário ter uma mensagem ou um anexo, e uma lista de números.', 'error');
         return;
     }
 
@@ -91,6 +102,7 @@ form.addEventListener('submit', async function (event) {
         try {
             anexoUrl = await uploadAnexoParaCloudinary(anexoArquivo);
             adicionarLog(`Upload concluído: ${anexoUrl}`, 'success');
+            
             const segundosDePausa = 5;
             adicionarLog(`Aguardando ${segundosDePausa} segundos para o arquivo se propagar na nuvem...`, 'info-small');
             await new Promise(resolve => setTimeout(resolve, segundosDePausa * 1000));
@@ -128,21 +140,23 @@ logoutBtnPrincipal.addEventListener('click', executarLogout);
 // =============================================================================
 // --- FUNÇÕES PRINCIPAIS E AUXILIARES ---
 // =============================================================================
-
 async function uploadAnexoParaCloudinary(arquivo) {
     const formData = new FormData();
     formData.append('file', arquivo);
     formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-    // VOLTANDO PARA A LÓGICA ORIGINAL: Deixar o Cloudinary detectar o tipo.
+
+    // VERSÃO FINAL: Deixamos o Cloudinary detectar o tipo de recurso automaticamente.
+    // Isso resolve o problema do preview de PDF no painel do Cloudinary.
     formData.append('resource_type', 'auto');
 
-    // Usando apenas o endpoint de imagem, que com 'resource_type: auto' é inteligente.
+    // Usamos sempre o endpoint de 'image', pois o 'resource_type: auto' o torna inteligente.
     const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
     
     const response = await fetch(cloudinaryUrl, {
         method: 'POST',
         body: formData,
     });
+
     if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error.message || 'Erro desconhecido no Cloudinary');
@@ -151,6 +165,7 @@ async function uploadAnexoParaCloudinary(arquivo) {
     return data.secure_url;
 }
 
+// O resto das funções continuam exatamente iguais
 async function enviarMensagemParaBackend(numero, mensagem, anexoUrl = null, fileName = null) {
     const endpoint = `${BACKEND_URL}/enviar-teste`;
     const payload = {
@@ -238,11 +253,13 @@ async function executarLogout(event) {
     btn.disabled = true;
     btn.textContent = 'Desconectando...';
     try {
-        await fetch(`${GATEWAY_URL}/logout`, { method: 'POST' });
+        const response = await fetch(`${GATEWAY_URL}/logout`, { method: 'POST' });
+        if(!response.ok) throw new Error('Falha no comando de logout no servidor.');
         statusConexaoDiv.textContent = 'Sessão encerrada com sucesso. Recarregando...';
         setTimeout(() => window.location.reload(), 1500);
     } catch (error) {
         alert("Falha ao encerrar sessão. Verifique o console.");
+        console.error(error);
         btn.disabled = false;
         btn.textContent = originalText;
     }
