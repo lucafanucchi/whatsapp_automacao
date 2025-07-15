@@ -5,6 +5,7 @@ const BACKEND_URL = "https://whatsapp-backend-km3f.onrender.com";
 const GATEWAY_URL = "https://whatsapp-gateway-a9iz.onrender.com";
 
 // NOVO: Configuração e Inicialização do Firebase
+// SUBSTITUA PELO SEU OBJETO firebaseConfig
 const firebaseConfig = {
   apiKey: "AIzaSyA6GG_x62LTfMyyy6ImB_5mf26juGAQs5w",
   authDomain: "whatsapp-automacao-9f1af.firebaseapp.com",
@@ -14,6 +15,7 @@ const firebaseConfig = {
   appId: "1:382151552032:web:a84e353a554113be602045"
 };
 
+// Inicializa o Firebase e o Storage
 const firebaseApp = firebase.initializeApp(firebaseConfig);
 const storage = firebase.storage();
 
@@ -146,52 +148,10 @@ form.addEventListener('submit', async function (event) {
 logoutBtnConexao.addEventListener('click', executarLogout);
 logoutBtnPrincipal.addEventListener('click', executarLogout);
 
+
 // =============================================================================
 // --- FUNÇÕES PRINCIPAIS E AUXILIARES ---
 // =============================================================================
-async function uploadAnexoParaFirebase(arquivo) {
-    try {
-        // Cria uma referência única para o arquivo na pasta 'anexos'
-        const nomeUnico = Date.now() + '-' + arquivo.name;
-        const storageRef = storage.ref(`anexos/${nomeUnico}`);
-
-        // Faz o upload do arquivo
-        const task = storageRef.put(arquivo);
-
-        // Aguarda o upload ser concluído
-        await task;
-
-        // Pega a URL de download pública do arquivo
-        const urlDeDownload = await storageRef.getDownloadURL();
-        
-        return urlDeDownload;
-    } catch (error) {
-        console.error("Erro no upload para o Firebase:", error);
-        throw new Error("Não foi possível enviar o arquivo. Verifique as regras de segurança do Firebase Storage.");
-    }
-}
-
-// O resto das funções continuam exatamente iguais
-async function enviarMensagemParaBackend(numero, mensagem, anexoUrl = null, fileName = null) {
-    const endpoint = `${BACKEND_URL}/enviar-teste`;
-    const payload = {
-        numero: numero.trim(),
-        mensagem: mensagem,
-        anexo_url: anexoUrl,
-        file_name: fileName
-    };
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-        const errorData = await response.json();
-        const errorMessage = errorData.detail || JSON.stringify(errorData);
-        throw new Error(errorMessage);
-    }
-    return response.json();
-}
 
 function gerenciarVisibilidadeTelas(estaConectado) {
     if (estaConectado) {
@@ -259,16 +219,64 @@ async function executarLogout(event) {
     btn.disabled = true;
     btn.textContent = 'Desconectando...';
     try {
-        const response = await fetch(`${GATEWAY_URL}/logout`, { method: 'POST' });
-        if(!response.ok) throw new Error('Falha no comando de logout no servidor.');
-        statusConexaoDiv.textContent = 'Sessão encerrada com sucesso. Recarregando...';
-        setTimeout(() => window.location.reload(), 1500);
+        fetch(`${GATEWAY_URL}/logout`, { method: 'POST' });
+        if (qrCodePollingInterval) clearInterval(qrCodePollingInterval);
+        telaPrincipal.style.display = 'none';
+        telaConexao.style.display = 'flex';
+        qrContainer.innerHTML = '';
+        statusConexaoDiv.textContent = 'Servidor reiniciando após logout. Aguarde...';
+        const restartPoll = setInterval(async () => {
+            try {
+                const response = await fetch(`${GATEWAY_URL}/status`);
+                if (response.ok) {
+                    clearInterval(restartPoll);
+                    iniciarPollingQrCode();
+                }
+            } catch (e) {
+                console.log("Servidor ainda não respondeu, tentando novamente...");
+            }
+        }, 3000);
     } catch (error) {
-        alert("Falha ao encerrar sessão. Verifique o console.");
-        console.error(error);
+        alert("Falha crítica ao tentar deslogar.");
         btn.disabled = false;
         btn.textContent = originalText;
     }
+}
+
+// SUBSTITUÍDA: Função de upload agora usa Firebase
+async function uploadAnexoParaFirebase(arquivo) {
+    try {
+        const nomeUnico = Date.now() + '-' + arquivo.name;
+        const storageRef = storage.ref(`anexos/${nomeUnico}`);
+        const task = storageRef.put(arquivo);
+        await task;
+        const urlDeDownload = await storageRef.getDownloadURL();
+        return urlDeDownload;
+    } catch (error) {
+        console.error("Erro no upload para o Firebase:", error);
+        throw new Error("Não foi possível enviar o arquivo. Verifique as regras de segurança do Firebase Storage.");
+    }
+}
+
+async function enviarMensagemParaBackend(numero, mensagem, anexoUrl = null, fileName = null) {
+    const endpoint = `${BACKEND_URL}/enviar-teste`;
+    const payload = {
+        numero: numero.trim(),
+        mensagem: mensagem,
+        anexo_url: anexoUrl,
+        file_name: fileName
+    };
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+        const errorData = await response.json();
+        const errorMessage = errorData.detail || JSON.stringify(errorData);
+        throw new Error(errorMessage);
+    }
+    return response.json();
 }
 
 function adicionarLog(texto, tipo = 'info') {
