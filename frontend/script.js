@@ -77,8 +77,9 @@ form.addEventListener('submit', async function (event) {
     const numerosTextoCompleto = numerosTextarea.value.trim();
     const numeros = numerosTextoCompleto.split('\n').filter(n => n);
     const anexoArquivo = anexoInput.files[0];
-    // ATUALIZADO: Capturamos o tipo do anexo aqui
     const anexoMimeType = anexoArquivo ? anexoArquivo.type : null;
+    // ATUALIZADO: Capturamos o nome original do arquivo aqui
+    const anexoNomeOriginal = anexoArquivo ? anexoArquivo.name : null;
 
     if ((!mensagem && !anexoArquivo) || numeros.length === 0) {
         adicionarLog('É necessário ter uma mensagem ou um anexo, e uma lista de números.', 'error');
@@ -114,8 +115,8 @@ form.addEventListener('submit', async function (event) {
     for (const numero of numeros) {
         adicionarLog(`Tentando enviar para ${numero}...`);
         try {
-            // ATUALIZADO: Enviamos a anexoKey E o anexoMimeType para o backend
-            await enviarMensagemParaBackend(numero, mensagem, anexoKey, anexoMimeType);
+            // ATUALIZADO: Enviamos também o nome original do arquivo
+            await enviarMensagemParaBackend(numero, mensagem, anexoKey, anexoMimeType, anexoNomeOriginal);
             adicionarLog(`--> Sucesso: Pedido para ${numero} foi aceito pelo servidor.`, 'success');
         } catch (error) {
             adicionarLog(`--> Falha: Erro ao enviar para ${numero}. Detalhes: ${error.message}`, 'error');
@@ -262,14 +263,15 @@ async function uploadAnexoParaR2(arquivo) {
     }
 }
 
-// ATUALIZADO: Função de envio para o backend agora envia a 'anexo_key' e o 'mimeType'
-async function enviarMensagemParaBackend(numero, mensagem, anexoKey = null, mimeType = null) {
+// ATUALIZADO: Função de envio para o backend agora envia também o 'originalFileName'
+async function enviarMensagemParaBackend(numero, mensagem, anexoKey = null, mimeType = null, originalFileName = null) {
     const endpoint = `${BACKEND_URL}/enviar-teste`;
     const payload = {
         numero: numero.trim(),
         mensagem: mensagem,
         anexo_key: anexoKey,
-        mime_type: mimeType // Enviando o tipo do arquivo
+        mime_type: mimeType,
+        original_file_name: originalFileName // Enviando o nome original
     };
     const response = await fetch(endpoint, {
         method: 'POST',

@@ -34,18 +34,19 @@ class UrlPayload(BaseModel):
     file_name: str
     content_type: str
 
-# ATUALIZADO: Adicionamos o mime_type aqui
+# ATUALIZADO: Adicionamos o original_file_name aqui
 class MensagemPayload(BaseModel):
     numero: str
     mensagem: str
     anexo_key: Optional[str] = None
     mime_type: Optional[str] = None
+    original_file_name: Optional[str] = None
 
 # --- APLICAÇÃO FastAPI ---
 app = FastAPI(
     title="API de Automação de WhatsApp",
     description="Orquestra o envio de campanhas via Gateway, com uploads para o Cloudflare R2.",
-    version="0.3.0" # Nova versão
+    version="0.4.0" # Nova versão
 )
 
 origins = ["*"]
@@ -63,7 +64,10 @@ GATEWAY_URL = "http://whatsapp-gateway-a9iz:10000/send-message"
 
 @app.post("/gerar-url-upload")
 async def gerar_url_upload(payload: UrlPayload):
-    unique_key = f"{uuid.uuid4()}-{payload.file_name}"
+    # ATUALIZADO: Limpa espaços e caracteres problemáticos do nome do arquivo para a chave
+    clean_file_name = payload.file_name.replace(" ", "_")
+    unique_key = f"{uuid.uuid4()}-{clean_file_name}"
+
     try:
         presigned_url = s3.generate_presigned_url(
             ClientMethod='put_object',
@@ -86,12 +90,12 @@ async def enviar_mensagem_teste(payload: MensagemPayload):
     if payload.anexo_key:
         anexo_url_final = f"{R2_PUBLIC_URL}/{payload.anexo_key}"
 
-    # ATUALIZADO: Repassamos o mime_type para o gateway
+    # ATUALIZADO: Usamos o original_file_name para o campo 'fileName'
     gateway_payload = {
         "number": payload.numero,
         "message": payload.mensagem,
         "anexoUrl": anexo_url_final,
-        "fileName": payload.anexo_key,
+        "fileName": payload.original_file_name, # A MUDANÇA PRINCIPAL ESTÁ AQUI
         "mimeType": payload.mime_type
     }
 
