@@ -57,6 +57,7 @@ app.post('/logout', async (req, res) => {
 
 
 app.post('/send-message', (req, res) => {
+    // ATUALIZADO: Capturamos o mimeType aqui
     const { number, message, anexoUrl, fileName, mimeType } = req.body;
 
     if (connectionStatus !== 'open') {
@@ -75,12 +76,9 @@ app.post('/send-message', (req, res) => {
             
             let messageContent;
             
-            // =============================================================================
-            // LÓGICA FINAL PARA LIDAR COM IMAGEM, PDF E VÍDEO
-            // =============================================================================
+            // ATUALIZADO: Lógica robusta usando o mimeType
             if (anexoUrl) {
                 if (mimeType && mimeType.startsWith('video')) {
-                    // Se o mimeType começar com 'video'
                     messageContent = {
                         video: { url: anexoUrl },
                         caption: message
@@ -88,7 +86,6 @@ app.post('/send-message', (req, res) => {
                     console.log(`Preparando para enviar Vídeo para ${number}`);
 
                 } else if (mimeType && mimeType === 'application/pdf') {
-                    // Se o mimeType for 'application/pdf'
                     messageContent = {
                         document: { url: anexoUrl },
                         caption: message,
@@ -97,7 +94,7 @@ app.post('/send-message', (req, res) => {
                     console.log(`Preparando para enviar PDF para ${number}`);
 
                 } else {
-                    // Caso contrário, trate como imagem (padrão)
+                    // Padrão: trata como imagem
                     messageContent = {
                         image: { url: anexoUrl },
                         caption: message
@@ -105,7 +102,7 @@ app.post('/send-message', (req, res) => {
                     console.log(`Preparando para enviar Imagem para ${number}`);
                 }
             } else {
-                // Se não houver anexo, envia só texto
+                // Se não houver URL, envia só texto
                 messageContent = {
                     text: message
                 };

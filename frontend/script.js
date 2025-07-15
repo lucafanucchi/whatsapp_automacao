@@ -4,8 +4,6 @@
 const BACKEND_URL = "https://whatsapp-backend-km3f.onrender.com";
 const GATEWAY_URL = "https://whatsapp-gateway-a9iz.onrender.com";
 
-// REMOVIDO: Configuração do Firebase não é mais necessária.
-
 // =============================================================================
 // --- SELEÇÃO DE ELEMENTOS DO DOM ---
 // =============================================================================
@@ -32,10 +30,7 @@ const previewVideo = document.getElementById('preview-video');
 // =============================================================================
 let qrCodePollingInterval = null;
 
-// REMOVIDO: Variável 'storage' e o bloco 'try/catch' do Firebase
-
 document.addEventListener('DOMContentLoaded', () => {
-    // Apenas verificamos o status e carregamos a lista salva
     verificarStatusInicial();
     const listaSalva = localStorage.getItem('listaNumerosSalva');
     if (listaSalva) {
@@ -82,6 +77,8 @@ form.addEventListener('submit', async function (event) {
     const numerosTextoCompleto = numerosTextarea.value.trim();
     const numeros = numerosTextoCompleto.split('\n').filter(n => n);
     const anexoArquivo = anexoInput.files[0];
+    // ATUALIZADO: Capturamos o tipo do anexo aqui
+    const anexoMimeType = anexoArquivo ? anexoArquivo.type : null;
 
     if ((!mensagem && !anexoArquivo) || numeros.length === 0) {
         adicionarLog('É necessário ter uma mensagem ou um anexo, e uma lista de números.', 'error');
@@ -97,12 +94,11 @@ form.addEventListener('submit', async function (event) {
     enviarBtn.textContent = 'Enviando...';
     feedbackDiv.innerHTML = '';
 
-    let anexoKey = null; // ATUALIZADO: Agora teremos uma 'chave' do objeto, não uma URL
+    let anexoKey = null;
 
     if (anexoArquivo) {
         adicionarLog('Preparando upload do arquivo...');
         try {
-            // AQUI: Chamando a nova função de upload para o R2 via nosso backend
             anexoKey = await uploadAnexoParaR2(anexoArquivo);
             adicionarLog(`Upload concluído com sucesso! Chave: ${anexoKey}`, 'success');
         } catch (error) {
@@ -118,8 +114,8 @@ form.addEventListener('submit', async function (event) {
     for (const numero of numeros) {
         adicionarLog(`Tentando enviar para ${numero}...`);
         try {
-            // ATUALIZADO: Agora enviamos a anexoKey para o backend
-            await enviarMensagemParaBackend(numero, mensagem, anexoKey);
+            // ATUALIZADO: Enviamos a anexoKey E o anexoMimeType para o backend
+            await enviarMensagemParaBackend(numero, mensagem, anexoKey, anexoMimeType);
             adicionarLog(`--> Sucesso: Pedido para ${numero} foi aceito pelo servidor.`, 'success');
         } catch (error) {
             adicionarLog(`--> Falha: Erro ao enviar para ${numero}. Detalhes: ${error.message}`, 'error');
@@ -231,10 +227,8 @@ async function executarLogout(event) {
     }
 }
 
-// NOVO: Função de upload agora usa nosso backend para interagir com o R2
 async function uploadAnexoParaR2(arquivo) {
     try {
-        // 1. Pedir a URL de upload para o nosso backend
         adicionarLog('Solicitando permissão de upload...', 'info-small');
         const urlResponse = await fetch(`${BACKEND_URL}/gerar-url-upload`, {
             method: 'POST',
@@ -251,7 +245,6 @@ async function uploadAnexoParaR2(arquivo) {
 
         const { upload_url, object_key } = await urlResponse.json();
         
-        // 2. Fazer o upload do arquivo diretamente para a URL pré-assinada do R2
         adicionarLog('Enviando arquivo para o armazenamento na nuvem...', 'info-small');
         const uploadResponse = await fetch(upload_url, {
             method: 'PUT',
@@ -262,23 +255,21 @@ async function uploadAnexoParaR2(arquivo) {
         if (!uploadResponse.ok) {
             throw new Error('O envio do arquivo para o serviço de nuvem falhou.');
         }
-
-        // 3. Retornar a chave do objeto para ser usada na mensagem
         return object_key;
-
     } catch (error) {
         console.error("Erro no upload para o R2:", error);
         throw new Error("Não foi possível enviar o arquivo. Verifique os logs do backend.");
     }
 }
 
-// ATUALIZADO: Função de envio para o backend agora envia a 'anexo_key'
-async function enviarMensagemParaBackend(numero, mensagem, anexoKey = null) {
+// ATUALIZADO: Função de envio para o backend agora envia a 'anexo_key' e o 'mimeType'
+async function enviarMensagemParaBackend(numero, mensagem, anexoKey = null, mimeType = null) {
     const endpoint = `${BACKEND_URL}/enviar-teste`;
     const payload = {
         numero: numero.trim(),
         mensagem: mensagem,
-        anexo_key: anexoKey
+        anexo_key: anexoKey,
+        mime_type: mimeType // Enviando o tipo do arquivo
     };
     const response = await fetch(endpoint, {
         method: 'POST',
