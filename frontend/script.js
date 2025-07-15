@@ -15,9 +15,6 @@ const firebaseConfig = {
   appId: "1:382151552032:web:a84e353a554113be602045"
 };
 
-// Inicializa o Firebase e o Storage
-const firebaseApp = firebase.initializeApp(firebaseConfig);
-const storage = firebase.storage();
 
 
 // =============================================================================
@@ -45,12 +42,24 @@ const previewVideo = document.getElementById('preview-video');
 // --- LÓGICA DE EVENTOS E ESTADO ---
 // =============================================================================
 let qrCodePollingInterval = null;
+let storage; // Variável para guardar a referência do Firebase Storage
 
 document.addEventListener('DOMContentLoaded', () => {
-    verificarStatusInicial();
-    const listaSalva = localStorage.getItem('listaNumerosSalva');
-    if (listaSalva) {
-        numerosTextarea.value = listaSalva;
+    try {
+        // AQUI: Inicializamos o Firebase DENTRO do evento, garantindo que a biblioteca já carregou.
+        const firebaseApp = firebase.initializeApp(firebaseConfig);
+        storage = firebase.storage();
+        console.log("Firebase inicializado com sucesso!");
+
+        // Agora que o Firebase está pronto, podemos iniciar o resto da aplicação
+        verificarStatusInicial();
+        const listaSalva = localStorage.getItem('listaNumerosSalva');
+        if (listaSalva) {
+            numerosTextarea.value = listaSalva;
+        }
+    } catch(error) {
+        console.error("Erro ao inicializar o Firebase: ", error);
+        alert("Não foi possível carregar os componentes da aplicação. Verifique a configuração do Firebase.");
     }
 });
 
