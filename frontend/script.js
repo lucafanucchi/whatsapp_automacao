@@ -24,7 +24,6 @@ const previewMensagem = document.getElementById('preview-mensagem');
 const previewPdfContainer = document.getElementById('preview-pdf-container');
 const previewPdfFilename = document.getElementById('preview-pdf-filename');
 const previewVideo = document.getElementById('preview-video');
-// NOVO: Selecionando os elementos do botão de pânico
 const stuckContainer = document.getElementById('stuck-container');
 const forceRefreshBtn = document.getElementById('force-refresh-btn');
 
@@ -33,7 +32,7 @@ const forceRefreshBtn = document.getElementById('force-refresh-btn');
 // --- LÓGICA DE EVENTOS E ESTADO ---
 // =============================================================================
 let qrCodePollingInterval = null;
-let stuckDetector = null; // NOVO: Variável para controlar o timer do "pânico"
+let stuckDetector = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     verificarStatusInicial();
@@ -78,15 +77,23 @@ anexoInput.addEventListener('change', (event) => {
 
 form.addEventListener('submit', async function (event) {
     event.preventDefault();
-    const mensagem = mensagemTextarea.value.trim();
+    let mensagem = mensagemTextarea.value.trim();
     const numerosTextoCompleto = numerosTextarea.value.trim();
-    const numeros = numerosTextoCompleto.split('\n').filter(n => n);
+    
+    const contatos = numerosTextoCompleto.split('\n').filter(line => line.trim() !== '').map(line => {
+        const parts = line.split(',');
+        return {
+            numero: parts[0] ? parts[0].trim() : '',
+            nome: parts[1] ? parts[1].trim() : ''
+        };
+    });
+
     const anexoArquivo = anexoInput.files[0];
     const anexoMimeType = anexoArquivo ? anexoArquivo.type : null;
     const anexoNomeOriginal = anexoArquivo ? anexoArquivo.name : null;
 
-    if ((!mensagem && !anexoArquivo) || numeros.length === 0) {
-        adicionarLog('É necessário ter uma mensagem ou um anexo, e uma lista de números.', 'error');
+    if ((!mensagem && !anexoArquivo) || contatos.length === 0) {
+        adicionarLog('É necessário ter uma mensagem ou um anexo, e uma lista de contatos.', 'error');
         return;
     }
 
@@ -114,19 +121,42 @@ form.addEventListener('submit', async function (event) {
         }
     }
 
-    adicionarLog(`Iniciando campanha para ${numeros.length} número(s).`);
+    adicionarLog(`Iniciando campanha para ${contatos.length} contato(s).`);
 
-    for (const numero of numeros) {
-        adicionarLog(`Tentando enviar para ${numero}...`);
-        try {
-            await enviarMensagemParaBackend(numero, mensagem, anexoKey, anexoMimeType, anexoNomeOriginal);
-            adicionarLog(`--> Sucesso: Pedido para ${numero} foi aceito pelo servidor.`, 'success');
-        } catch (error) {
-            adicionarLog(`--> Falha: Erro ao enviar para ${numero}. Detalhes: ${error.message}`, 'error');
+    let contadorEnvios = 0;
+    for (const contato of contatos) {
+        contadorEnvios++;
+        adicionarLog(`(${contadorEnvios}/${contatos.length}) Preparando para ${contato.nome || contato.numero}...`);
+        
+        // --- LÓGICA DE PERSONALIZAÇÃO INTELIGENTE ---
+        let mensagemPersonalizada = mensagem;
+        if (contato.nome) {
+            mensagemPersonalizada = mensagem.replace(/\{nome\}/gi, contato.nome);
+        } else {
+            mensagemPersonalizada = mensagem.replace(/ ?\{nome\}/gi, '');
         }
-        const delayAleatorio = Math.floor(Math.random() * (15000 - 8000 + 1) + 8000);
-        adicionarLog(`Aguardando ${(delayAleatorio / 1000).toFixed(1)} segundos...`, 'info-small');
-        await new Promise(resolve => setTimeout(resolve, delayAleatorio));
+        // --- FIM DA LÓGICA ---
+
+        try {
+            await enviarMensagemParaBackend(contato.numero, mensagemPersonalizada, anexoKey, anexoMimeType, anexoNomeOriginal);
+            adicionarLog(`--> Sucesso: Pedido para ${contato.nome || contato.numero} foi aceito.`, 'success');
+        } catch (error) {
+            adicionarLog(`--> Falha: Erro ao enviar para ${contato.nome || contato.numero}. Detalhes: ${error.message}`, 'error');
+        }
+
+        // --- LÓGICA DE PAUSAS E DELAYS ---
+        // Verifica se é hora de uma pausa longa (a cada 10 envios)
+        if (contadorEnvios % 10 === 0 && contadorEnvios < contatos.length) {
+            const pausaLonga = Math.floor(Math.random() * (180000 - 60000 + 1)) + 60000; // Pausa de 1 a 3 minutos
+            adicionarLog(`Pausa estratégica de ${(pausaLonga / 60000).toFixed(1)} minuto(s) para simular comportamento humano...`, 'info');
+            await new Promise(resolve => setTimeout(resolve, pausaLonga));
+        } else {
+            // Delay curto e aleatório entre mensagens normais
+            const delayAleatorio = Math.floor(Math.random() * (28000 - 15000 + 1)) + 15000; // Intervalo de 15 a 28 segundos
+            adicionarLog(`Aguardando ${(delayAleatorio / 1000).toFixed(1)} segundos...`, 'info-small');
+            await new Promise(resolve => setTimeout(resolve, delayAleatorio));
+        }
+        // --- FIM DA LÓGICA DE PAUSAS ---
     }
 
     adicionarLog('Campanha finalizada!');
@@ -134,9 +164,9 @@ form.addEventListener('submit', async function (event) {
     enviarBtn.textContent = 'Enviar Campanha';
 });
 
+
 logoutBtnConexao.addEventListener('click', executarLogout);
 logoutBtnPrincipal.addEventListener('click', executarLogout);
-// NOVO: O botão de pânico também chama a função de logout
 forceRefreshBtn.addEventListener('click', executarLogout);
 
 
@@ -145,7 +175,6 @@ forceRefreshBtn.addEventListener('click', executarLogout);
 // =============================================================================
 
 function gerenciarVisibilidadeTelas(estaConectado) {
-    // NOVO: Limpamos qualquer timer pendente ao mudar de tela
     if (stuckDetector) clearTimeout(stuckDetector);
     stuckContainer.style.display = 'none';
 
@@ -180,25 +209,23 @@ async function verificarStatusInicial() {
 function iniciarPollingQrCode() {
     if (qrCodePollingInterval) return;
 
-    // NOVO: Inicia um timer para detectar se a aplicação travou
     stuckDetector = setTimeout(() => {
         const qrCodeJaExibido = qrContainer.querySelector('canvas');
         if (statusConexaoDiv.textContent.includes('Aguardando') && !qrCodeJaExibido) {
             stuckContainer.style.display = 'block';
         }
-    }, 25000); // Exibe o botão após 25 segundos de espera
+    }, 25000);
 
     qrCodePollingInterval = setInterval(async () => {
         try {
             const statusResponse = await fetch(`${GATEWAY_URL}/status`);
             const statusData = await statusResponse.json();
             if (statusData.connected) {
-                gerenciarVisibilidadeTelas(true); // Isso vai limpar o timer e esconder o botão
+                gerenciarVisibilidadeTelas(true);
                 return;
             }
             const qrResponse = await fetch(`${GATEWAY_URL}/qr-code`);
             if (qrResponse.ok) {
-                // Se o QR Code chegar, limpamos o timer e garantimos que o botão de pânico suma
                 if (stuckDetector) clearTimeout(stuckDetector);
                 stuckContainer.style.display = 'none';
 
@@ -227,23 +254,21 @@ async function executarLogout(event) {
     btn.disabled = true;
     btn.textContent = 'Desconectando...';
     
-    // NOVO: Garantimos que o botão de pânico suma ao iniciar o logout
     stuckContainer.style.display = 'none';
 
     try {
-        await fetch(`${GATEWAY_URL}/logout`, { method: 'POST' }); // Adicionei await para esperar a chamada
+        await fetch(`${GATEWAY_URL}/logout`, { method: 'POST' });
         if (qrCodePollingInterval) clearInterval(qrCodePollingInterval);
-        if (stuckDetector) clearTimeout(stuckDetector); // Limpa o timer do pânico
+        if (stuckDetector) clearTimeout(stuckDetector);
 
         telaPrincipal.style.display = 'none';
         telaConexao.style.display = 'flex';
         qrContainer.innerHTML = '';
         statusConexaoDiv.textContent = 'Servidor reiniciando após logout. Aguarde...';
         
-        // Aguarda um pouco antes de começar a verificar o status novamente
         setTimeout(() => {
              iniciarPollingQrCode();
-             btn.disabled = false; // Reabilita o botão
+             btn.disabled = false;
              btn.textContent = originalText;
         }, 5000);
 

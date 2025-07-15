@@ -57,7 +57,6 @@ app.post('/logout', async (req, res) => {
 
 
 app.post('/send-message', (req, res) => {
-    // ATUALIZADO: Capturamos o mimeType aqui
     const { number, message, anexoUrl, fileName, mimeType } = req.body;
 
     if (connectionStatus !== 'open') {
@@ -74,9 +73,14 @@ app.post('/send-message', (req, res) => {
             const recipientId = `${number}@s.whatsapp.net`;
             console.log(`Processando envio em segundo plano para: ${number}`);
             
+            // --- NOVO: SIMULAÇÃO DE DIGITAÇÃO ---
+            await sock.sendPresenceUpdate('composing', recipientId);
+            const delayDigitando = Math.floor(Math.random() * 2000) + 1000; // Espera de 1 a 3 segundos
+            await new Promise(resolve => setTimeout(resolve, delayDigitando));
+            // --- FIM DA SIMULAÇÃO ---
+            
             let messageContent;
             
-            // ATUALIZADO: Lógica robusta usando o mimeType
             if (anexoUrl) {
                 if (mimeType && mimeType.startsWith('video')) {
                     messageContent = {
@@ -94,7 +98,6 @@ app.post('/send-message', (req, res) => {
                     console.log(`Preparando para enviar PDF para ${number}`);
 
                 } else {
-                    // Padrão: trata como imagem
                     messageContent = {
                         image: { url: anexoUrl },
                         caption: message
@@ -102,13 +105,14 @@ app.post('/send-message', (req, res) => {
                     console.log(`Preparando para enviar Imagem para ${number}`);
                 }
             } else {
-                // Se não houver URL, envia só texto
                 messageContent = {
                     text: message
                 };
             }
             
             await sock.sendMessage(recipientId, messageContent);
+            await sock.sendPresenceUpdate('paused', recipientId); // Limpa o status "digitando"
+
             console.log(`SUCESSO (segundo plano): Mensagem com anexo enviada para ${number}`);
 
         } catch (error) {
