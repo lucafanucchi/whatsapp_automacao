@@ -24,11 +24,16 @@ const previewMensagem = document.getElementById('preview-mensagem');
 const previewPdfContainer = document.getElementById('preview-pdf-container');
 const previewPdfFilename = document.getElementById('preview-pdf-filename');
 const previewVideo = document.getElementById('preview-video');
+// NOVO: Selecionando os elementos do botão de pânico
+const stuckContainer = document.getElementById('stuck-container');
+const forceRefreshBtn = document.getElementById('force-refresh-btn');
+
 
 // =============================================================================
 // --- LÓGICA DE EVENTOS E ESTADO ---
 // =============================================================================
 let qrCodePollingInterval = null;
+let stuckDetector = null; // NOVO: Variável para controlar o timer do "pânico"
 
 document.addEventListener('DOMContentLoaded', () => {
     verificarStatusInicial();
@@ -78,7 +83,6 @@ form.addEventListener('submit', async function (event) {
     const numeros = numerosTextoCompleto.split('\n').filter(n => n);
     const anexoArquivo = anexoInput.files[0];
     const anexoMimeType = anexoArquivo ? anexoArquivo.type : null;
-    // ATUALIZADO: Capturamos o nome original do arquivo aqui
     const anexoNomeOriginal = anexoArquivo ? anexoArquivo.name : null;
 
     if ((!mensagem && !anexoArquivo) || numeros.length === 0) {
@@ -115,7 +119,6 @@ form.addEventListener('submit', async function (event) {
     for (const numero of numeros) {
         adicionarLog(`Tentando enviar para ${numero}...`);
         try {
-            // ATUALIZADO: Enviamos também o nome original do arquivo
             await enviarMensagemParaBackend(numero, mensagem, anexoKey, anexoMimeType, anexoNomeOriginal);
             adicionarLog(`--> Sucesso: Pedido para ${numero} foi aceito pelo servidor.`, 'success');
         } catch (error) {
@@ -133,12 +136,19 @@ form.addEventListener('submit', async function (event) {
 
 logoutBtnConexao.addEventListener('click', executarLogout);
 logoutBtnPrincipal.addEventListener('click', executarLogout);
+// NOVO: O botão de pânico também chama a função de logout
+forceRefreshBtn.addEventListener('click', executarLogout);
+
 
 // =============================================================================
 // --- FUNÇÕES PRINCIPAIS E AUXILIARES ---
 // =============================================================================
 
 function gerenciarVisibilidadeTelas(estaConectado) {
+    // NOVO: Limpamos qualquer timer pendente ao mudar de tela
+    if (stuckDetector) clearTimeout(stuckDetector);
+    stuckContainer.style.display = 'none';
+
     if (estaConectado) {
         telaPrincipal.style.display = 'block';
         telaConexao.style.display = 'none';
@@ -169,16 +179,29 @@ async function verificarStatusInicial() {
 
 function iniciarPollingQrCode() {
     if (qrCodePollingInterval) return;
+
+    // NOVO: Inicia um timer para detectar se a aplicação travou
+    stuckDetector = setTimeout(() => {
+        const qrCodeJaExibido = qrContainer.querySelector('canvas');
+        if (statusConexaoDiv.textContent.includes('Aguardando') && !qrCodeJaExibido) {
+            stuckContainer.style.display = 'block';
+        }
+    }, 25000); // Exibe o botão após 25 segundos de espera
+
     qrCodePollingInterval = setInterval(async () => {
         try {
             const statusResponse = await fetch(`${GATEWAY_URL}/status`);
             const statusData = await statusResponse.json();
             if (statusData.connected) {
-                gerenciarVisibilidadeTelas(true);
+                gerenciarVisibilidadeTelas(true); // Isso vai limpar o timer e esconder o botão
                 return;
             }
             const qrResponse = await fetch(`${GATEWAY_URL}/qr-code`);
             if (qrResponse.ok) {
+                // Se o QR Code chegar, limpamos o timer e garantimos que o botão de pânico suma
+                if (stuckDetector) clearTimeout(stuckDetector);
+                stuckContainer.style.display = 'none';
+
                 const qrData = await qrResponse.json();
                 qrContainer.innerHTML = '';
                 new QRCode(qrContainer, { text: qrData.qr, width: 250, height: 250 });
@@ -203,24 +226,27 @@ async function executarLogout(event) {
     const originalText = btn.textContent;
     btn.disabled = true;
     btn.textContent = 'Desconectando...';
+    
+    // NOVO: Garantimos que o botão de pânico suma ao iniciar o logout
+    stuckContainer.style.display = 'none';
+
     try {
-        fetch(`${GATEWAY_URL}/logout`, { method: 'POST' });
+        await fetch(`${GATEWAY_URL}/logout`, { method: 'POST' }); // Adicionei await para esperar a chamada
         if (qrCodePollingInterval) clearInterval(qrCodePollingInterval);
+        if (stuckDetector) clearTimeout(stuckDetector); // Limpa o timer do pânico
+
         telaPrincipal.style.display = 'none';
         telaConexao.style.display = 'flex';
         qrContainer.innerHTML = '';
         statusConexaoDiv.textContent = 'Servidor reiniciando após logout. Aguarde...';
-        const restartPoll = setInterval(async () => {
-            try {
-                const response = await fetch(`${GATEWAY_URL}/status`);
-                if (response.ok) {
-                    clearInterval(restartPoll);
-                    iniciarPollingQrCode();
-                }
-            } catch (e) {
-                console.log("Servidor ainda não respondeu, tentando novamente...");
-            }
-        }, 3000);
+        
+        // Aguarda um pouco antes de começar a verificar o status novamente
+        setTimeout(() => {
+             iniciarPollingQrCode();
+             btn.disabled = false; // Reabilita o botão
+             btn.textContent = originalText;
+        }, 5000);
+
     } catch (error) {
         alert("Falha crítica ao tentar deslogar.");
         btn.disabled = false;
@@ -263,7 +289,6 @@ async function uploadAnexoParaR2(arquivo) {
     }
 }
 
-// ATUALIZADO: Função de envio para o backend agora envia também o 'originalFileName'
 async function enviarMensagemParaBackend(numero, mensagem, anexoKey = null, mimeType = null, originalFileName = null) {
     const endpoint = `${BACKEND_URL}/enviar-teste`;
     const payload = {
@@ -271,7 +296,7 @@ async function enviarMensagemParaBackend(numero, mensagem, anexoKey = null, mime
         mensagem: mensagem,
         anexo_key: anexoKey,
         mime_type: mimeType,
-        original_file_name: originalFileName // Enviando o nome original
+        original_file_name: originalFileName
     };
     const response = await fetch(endpoint, {
         method: 'POST',

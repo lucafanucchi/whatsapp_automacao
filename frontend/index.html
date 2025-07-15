@@ -17,6 +17,10 @@
             <div id="qrcode-container">
                 <div id="status-conexao">Aguardando QR Code do servidor...</div>
             </div>
+            <div id="stuck-container" style="display: none; margin-top: 20px; text-align: center; border-top: 1px solid #eee; padding-top: 20px;">
+                <p style="color: #555; font-size: 0.9em;">Ainda aguardando? Pode haver uma sessão antiga travada.</p>
+                <button id="force-refresh-btn" class="logout-btn-vermelho">Forçar Nova Sessão</button>
+            </div>
             <button id="logout-btn" class="logout-btn-vermelho" style="display: none;">Desconectar Sessão Atual</button>
         </div>
     </section>
