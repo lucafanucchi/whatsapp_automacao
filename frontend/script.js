@@ -1,10 +1,22 @@
 // =============================================================================
 // --- CONFIGURAÇÃO PRINCIPAL ---
 // =============================================================================
-const CLOUDINARY_CLOUD_NAME = "di1axitma";
-const CLOUDINARY_UPLOAD_PRESET = "ml_default"; // Usando o preset correto que criamos
 const BACKEND_URL = "https://whatsapp-backend-km3f.onrender.com";
 const GATEWAY_URL = "https://whatsapp-gateway-a9iz.onrender.com";
+
+// NOVO: Configuração e Inicialização do Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyA6GG_x62LTfMyyy6ImB_5mf26juGAQs5w",
+  authDomain: "whatsapp-automacao-9f1af.firebaseapp.com",
+  projectId: "whatsapp-automacao-9f1af",
+  storageBucket: "whatsapp-automacao-9f1af.firebasestorage.app",
+  messagingSenderId: "382151552032",
+  appId: "1:382151552032:web:a84e353a554113be602045"
+};
+
+const firebaseApp = firebase.initializeApp(firebaseConfig);
+const storage = firebase.storage();
+
 
 // =============================================================================
 // --- SELEÇÃO DE ELEMENTOS DO DOM ---
@@ -100,12 +112,9 @@ form.addEventListener('submit', async function (event) {
     if (anexoArquivo) {
         adicionarLog('Fazendo upload do arquivo para a nuvem...');
         try {
-            anexoUrl = await uploadAnexoParaCloudinary(anexoArquivo);
+            // AQUI: Chamando a nova função de upload do Firebase
+            anexoUrl = await uploadAnexoParaFirebase(anexoArquivo);
             adicionarLog(`Upload concluído: ${anexoUrl}`, 'success');
-            
-            const segundosDePausa = 5;
-            adicionarLog(`Aguardando ${segundosDePausa} segundos para o arquivo se propagar na nuvem...`, 'info-small');
-            await new Promise(resolve => setTimeout(resolve, segundosDePausa * 1000));
         } catch (error) {
             adicionarLog(`Falha no upload do arquivo: ${error.message}`, 'error');
             enviarBtn.disabled = false;
@@ -140,29 +149,26 @@ logoutBtnPrincipal.addEventListener('click', executarLogout);
 // =============================================================================
 // --- FUNÇÕES PRINCIPAIS E AUXILIARES ---
 // =============================================================================
-async function uploadAnexoParaCloudinary(arquivo) {
-    const formData = new FormData();
-    formData.append('file', arquivo);
-    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+async function uploadAnexoParaFirebase(arquivo) {
+    try {
+        // Cria uma referência única para o arquivo na pasta 'anexos'
+        const nomeUnico = Date.now() + '-' + arquivo.name;
+        const storageRef = storage.ref(`anexos/${nomeUnico}`);
 
-    // VERSÃO FINAL: Deixamos o Cloudinary detectar o tipo de recurso automaticamente.
-    // Isso resolve o problema do preview de PDF no painel do Cloudinary.
-    formData.append('resource_type', 'auto');
+        // Faz o upload do arquivo
+        const task = storageRef.put(arquivo);
 
-    // Usamos sempre o endpoint de 'image', pois o 'resource_type: auto' o torna inteligente.
-    const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
-    
-    const response = await fetch(cloudinaryUrl, {
-        method: 'POST',
-        body: formData,
-    });
+        // Aguarda o upload ser concluído
+        await task;
 
-    if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error.message || 'Erro desconhecido no Cloudinary');
+        // Pega a URL de download pública do arquivo
+        const urlDeDownload = await storageRef.getDownloadURL();
+        
+        return urlDeDownload;
+    } catch (error) {
+        console.error("Erro no upload para o Firebase:", error);
+        throw new Error("Não foi possível enviar o arquivo. Verifique as regras de segurança do Firebase Storage.");
     }
-    const data = await response.json();
-    return data.secure_url;
 }
 
 // O resto das funções continuam exatamente iguais
