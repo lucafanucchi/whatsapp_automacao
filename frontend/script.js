@@ -4,18 +4,7 @@
 const BACKEND_URL = "https://whatsapp-backend-km3f.onrender.com";
 const GATEWAY_URL = "https://whatsapp-gateway-a9iz.onrender.com";
 
-// NOVO: Configuração e Inicialização do Firebase
-// SUBSTITUA PELO SEU OBJETO firebaseConfig
-const firebaseConfig = {
-  apiKey: "AIzaSyA6GG_x62LTfMyyy6ImB_5mf26juGAQs5w",
-  authDomain: "whatsapp-automacao-9f1af.firebaseapp.com",
-  projectId: "whatsapp-automacao-9f1af",
-  storageBucket: "whatsapp-automacao-9f1af.firebasestorage.app",
-  messagingSenderId: "382151552032",
-  appId: "1:382151552032:web:a84e353a554113be602045"
-};
-
-
+// REMOVIDO: Configuração do Firebase não é mais necessária.
 
 // =============================================================================
 // --- SELEÇÃO DE ELEMENTOS DO DOM ---
@@ -42,24 +31,15 @@ const previewVideo = document.getElementById('preview-video');
 // --- LÓGICA DE EVENTOS E ESTADO ---
 // =============================================================================
 let qrCodePollingInterval = null;
-let storage; // Variável para guardar a referência do Firebase Storage
+
+// REMOVIDO: Variável 'storage' e o bloco 'try/catch' do Firebase
 
 document.addEventListener('DOMContentLoaded', () => {
-    try {
-        // AQUI: Inicializamos o Firebase DENTRO do evento, garantindo que a biblioteca já carregou.
-        const firebaseApp = firebase.initializeApp(firebaseConfig);
-        storage = firebase.storage();
-        console.log("Firebase inicializado com sucesso!");
-
-        // Agora que o Firebase está pronto, podemos iniciar o resto da aplicação
-        verificarStatusInicial();
-        const listaSalva = localStorage.getItem('listaNumerosSalva');
-        if (listaSalva) {
-            numerosTextarea.value = listaSalva;
-        }
-    } catch(error) {
-        console.error("Erro ao inicializar o Firebase: ", error);
-        alert("Não foi possível carregar os componentes da aplicação. Verifique a configuração do Firebase.");
+    // Apenas verificamos o status e carregamos a lista salva
+    verificarStatusInicial();
+    const listaSalva = localStorage.getItem('listaNumerosSalva');
+    if (listaSalva) {
+        numerosTextarea.value = listaSalva;
     }
 });
 
@@ -77,23 +57,21 @@ anexoInput.addEventListener('change', (event) => {
     previewVideo.src = '';
 
     if (arquivo) {
-        if (arquivo.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = function (e) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            if (arquivo.type.startsWith('image/')) {
                 previewImagem.src = e.target.result;
                 previewImagem.style.display = 'block';
-            }
-            reader.readAsDataURL(arquivo);
-        } else if (arquivo.type === "application/pdf") {
-            previewPdfFilename.textContent = arquivo.name;
-            previewPdfContainer.style.display = 'flex';
-        } else if (arquivo.type.startsWith('video/')) {
-            const reader = new FileReader();
-            reader.onload = function (e) {
+            } else if (arquivo.type.startsWith('video/')) {
                 previewVideo.src = e.target.result;
                 previewVideo.style.display = 'block';
             }
-            reader.readAsDataURL(arquivo);
+        }
+        if (arquivo.type.startsWith('image/') || arquivo.type.startsWith('video/')) {
+             reader.readAsDataURL(arquivo);
+        } else if (arquivo.type === "application/pdf") {
+            previewPdfFilename.textContent = arquivo.name;
+            previewPdfContainer.style.display = 'flex';
         }
     }
 });
@@ -104,8 +82,6 @@ form.addEventListener('submit', async function (event) {
     const numerosTextoCompleto = numerosTextarea.value.trim();
     const numeros = numerosTextoCompleto.split('\n').filter(n => n);
     const anexoArquivo = anexoInput.files[0];
-    const anexoMimeType = anexoArquivo ? anexoArquivo.type : null; // Capture o MIME type
-
 
     if ((!mensagem && !anexoArquivo) || numeros.length === 0) {
         adicionarLog('É necessário ter uma mensagem ou um anexo, e uma lista de números.', 'error');
@@ -121,13 +97,14 @@ form.addEventListener('submit', async function (event) {
     enviarBtn.textContent = 'Enviando...';
     feedbackDiv.innerHTML = '';
 
-    let anexoUrl = null;
+    let anexoKey = null; // ATUALIZADO: Agora teremos uma 'chave' do objeto, não uma URL
+
     if (anexoArquivo) {
-        adicionarLog('Fazendo upload do arquivo para a nuvem...');
+        adicionarLog('Preparando upload do arquivo...');
         try {
-            // AQUI: Chamando a nova função de upload do Firebase
-            anexoUrl = await uploadAnexoParaFirebase(anexoArquivo);
-            adicionarLog(`Upload concluído: ${anexoUrl}`, 'success');
+            // AQUI: Chamando a nova função de upload para o R2 via nosso backend
+            anexoKey = await uploadAnexoParaR2(anexoArquivo);
+            adicionarLog(`Upload concluído com sucesso! Chave: ${anexoKey}`, 'success');
         } catch (error) {
             adicionarLog(`Falha no upload do arquivo: ${error.message}`, 'error');
             enviarBtn.disabled = false;
@@ -141,7 +118,8 @@ form.addEventListener('submit', async function (event) {
     for (const numero of numeros) {
         adicionarLog(`Tentando enviar para ${numero}...`);
         try {
-            await enviarMensagemParaBackend(numero, mensagem, anexoUrl, anexoArquivo ? anexoArquivo.name : null, anexoMimeType);
+            // ATUALIZADO: Agora enviamos a anexoKey para o backend
+            await enviarMensagemParaBackend(numero, mensagem, anexoKey);
             adicionarLog(`--> Sucesso: Pedido para ${numero} foi aceito pelo servidor.`, 'success');
         } catch (error) {
             adicionarLog(`--> Falha: Erro ao enviar para ${numero}. Detalhes: ${error.message}`, 'error');
@@ -158,7 +136,6 @@ form.addEventListener('submit', async function (event) {
 
 logoutBtnConexao.addEventListener('click', executarLogout);
 logoutBtnPrincipal.addEventListener('click', executarLogout);
-
 
 // =============================================================================
 // --- FUNÇÕES PRINCIPAIS E AUXILIARES ---
@@ -254,29 +231,54 @@ async function executarLogout(event) {
     }
 }
 
-// SUBSTITUÍDA: Função de upload agora usa Firebase
-async function uploadAnexoParaFirebase(arquivo) {
+// NOVO: Função de upload agora usa nosso backend para interagir com o R2
+async function uploadAnexoParaR2(arquivo) {
     try {
-        const nomeUnico = Date.now() + '-' + arquivo.name;
-        const storageRef = storage.ref(`anexos/${nomeUnico}`);
-        const task = storageRef.put(arquivo);
-        await task;
-        const urlDeDownload = await storageRef.getDownloadURL();
-        return urlDeDownload;
+        // 1. Pedir a URL de upload para o nosso backend
+        adicionarLog('Solicitando permissão de upload...', 'info-small');
+        const urlResponse = await fetch(`${BACKEND_URL}/gerar-url-upload`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                file_name: arquivo.name,
+                content_type: arquivo.type
+            }),
+        });
+
+        if (!urlResponse.ok) {
+            throw new Error('Falha ao obter URL de upload do servidor.');
+        }
+
+        const { upload_url, object_key } = await urlResponse.json();
+        
+        // 2. Fazer o upload do arquivo diretamente para a URL pré-assinada do R2
+        adicionarLog('Enviando arquivo para o armazenamento na nuvem...', 'info-small');
+        const uploadResponse = await fetch(upload_url, {
+            method: 'PUT',
+            headers: { 'Content-Type': arquivo.type },
+            body: arquivo
+        });
+
+        if (!uploadResponse.ok) {
+            throw new Error('O envio do arquivo para o serviço de nuvem falhou.');
+        }
+
+        // 3. Retornar a chave do objeto para ser usada na mensagem
+        return object_key;
+
     } catch (error) {
-        console.error("Erro no upload para o Firebase:", error);
-        throw new Error("Não foi possível enviar o arquivo. Verifique as regras de segurança do Firebase Storage.");
+        console.error("Erro no upload para o R2:", error);
+        throw new Error("Não foi possível enviar o arquivo. Verifique os logs do backend.");
     }
 }
 
-async function enviarMensagemParaBackend(numero, mensagem, anexoUrl = null, fileName = null, mimeType = null) {
+// ATUALIZADO: Função de envio para o backend agora envia a 'anexo_key'
+async function enviarMensagemParaBackend(numero, mensagem, anexoKey = null) {
     const endpoint = `${BACKEND_URL}/enviar-teste`;
     const payload = {
         numero: numero.trim(),
         mensagem: mensagem,
-        anexo_url: anexoUrl,
-        file_name: fileName,
-        mime_type: mimeType
+        anexo_key: anexoKey
     };
     const response = await fetch(endpoint, {
         method: 'POST',
