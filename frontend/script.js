@@ -104,6 +104,8 @@ form.addEventListener('submit', async function (event) {
     const numerosTextoCompleto = numerosTextarea.value.trim();
     const numeros = numerosTextoCompleto.split('\n').filter(n => n);
     const anexoArquivo = anexoInput.files[0];
+    const anexoMimeType = anexoArquivo ? anexoArquivo.type : null; // Capture o MIME type
+
 
     if ((!mensagem && !anexoArquivo) || numeros.length === 0) {
         adicionarLog('É necessário ter uma mensagem ou um anexo, e uma lista de números.', 'error');
@@ -139,7 +141,7 @@ form.addEventListener('submit', async function (event) {
     for (const numero of numeros) {
         adicionarLog(`Tentando enviar para ${numero}...`);
         try {
-            await enviarMensagemParaBackend(numero, mensagem, anexoUrl, anexoArquivo ? anexoArquivo.name : null);
+            await enviarMensagemParaBackend(numero, mensagem, anexoUrl, anexoArquivo ? anexoArquivo.name : null, anexoMimeType);
             adicionarLog(`--> Sucesso: Pedido para ${numero} foi aceito pelo servidor.`, 'success');
         } catch (error) {
             adicionarLog(`--> Falha: Erro ao enviar para ${numero}. Detalhes: ${error.message}`, 'error');
@@ -267,13 +269,14 @@ async function uploadAnexoParaFirebase(arquivo) {
     }
 }
 
-async function enviarMensagemParaBackend(numero, mensagem, anexoUrl = null, fileName = null) {
+async function enviarMensagemParaBackend(numero, mensagem, anexoUrl = null, fileName = null, mimeType = null) {
     const endpoint = `${BACKEND_URL}/enviar-teste`;
     const payload = {
         numero: numero.trim(),
         mensagem: mensagem,
         anexo_url: anexoUrl,
-        file_name: fileName
+        file_name: fileName,
+        mime_type: mimeType
     };
     const response = await fetch(endpoint, {
         method: 'POST',

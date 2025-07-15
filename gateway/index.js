@@ -57,7 +57,7 @@ app.post('/logout', async (req, res) => {
 
 
 app.post('/send-message', (req, res) => {
-    const { number, message, anexoUrl, fileName } = req.body;
+    const { number, message, anexoUrl, fileName, mimeType } = req.body;
 
     if (connectionStatus !== 'open') {
         return res.status(503).json({ success: false, message: 'Gateway não está conectado e autenticado ao WhatsApp.' });
@@ -79,10 +79,16 @@ app.post('/send-message', (req, res) => {
             // LÓGICA FINAL PARA LIDAR COM IMAGEM, PDF E VÍDEO
             // =============================================================================
             if (anexoUrl) {
-                const lowerCaseUrl = anexoUrl.toLowerCase();
-                
-                if (lowerCaseUrl.endsWith('.pdf')) {
-                    // Se for PDF, monta um objeto de documento
+                if (mimeType && mimeType.startsWith('video')) {
+                    // Se o mimeType começar com 'video'
+                    messageContent = {
+                        video: { url: anexoUrl },
+                        caption: message
+                    };
+                    console.log(`Preparando para enviar Vídeo para ${number}`);
+
+                } else if (mimeType && mimeType === 'application/pdf') {
+                    // Se o mimeType for 'application/pdf'
                     messageContent = {
                         document: { url: anexoUrl },
                         caption: message,
@@ -90,16 +96,8 @@ app.post('/send-message', (req, res) => {
                     };
                     console.log(`Preparando para enviar PDF para ${number}`);
 
-                } else if (lowerCaseUrl.endsWith('.mp4') || lowerCaseUrl.endsWith('.mov')) {
-                    // Se for Vídeo, monta um objeto de vídeo
-                    messageContent = {
-                        video: { url: anexoUrl },
-                        caption: message
-                    };
-                    console.log(`Preparando para enviar Vídeo para ${number}`);
-
                 } else {
-                    // Senão, trata como imagem (padrão para .png, .jpg, etc.)
+                    // Caso contrário, trate como imagem (padrão)
                     messageContent = {
                         image: { url: anexoUrl },
                         caption: message
@@ -107,7 +105,7 @@ app.post('/send-message', (req, res) => {
                     console.log(`Preparando para enviar Imagem para ${number}`);
                 }
             } else {
-                // Se não houver URL, envia só texto
+                // Se não houver anexo, envia só texto
                 messageContent = {
                     text: message
                 };

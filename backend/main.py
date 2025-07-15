@@ -9,6 +9,7 @@ class MensagemPayload(BaseModel):
     mensagem: str
     anexo_url: Optional[str] = None # Renomeado para 'anexo'
     file_name: Optional[str] = None # NOVO
+    mime_type: Optional[str] = None # NOVO
 
 app = FastAPI(
     title="API de Automação de WhatsApp",
@@ -35,7 +36,8 @@ async def enviar_mensagem_teste(payload: MensagemPayload):
         "number": payload.numero,
         "message": payload.mensagem,
         "anexoUrl": payload.anexo_url, # Renomeado
-        "fileName": payload.file_name  # NOVO
+        "fileName": payload.file_name,  # NOVO
+        "mimeType": payload.mime_type  # NOVO (use camelCase para o JavaScript)
     }
 
     try:
