@@ -1,5 +1,5 @@
-# backend/requirements.txt
 fastapi
 uvicorn[standard]
 httpx
 boto3
+phonenumbers
