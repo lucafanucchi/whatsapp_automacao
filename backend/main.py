@@ -8,7 +8,7 @@ from typing import Optional
 import boto3
 import os
 import uuid
-import phonenumbers # NOVO: Importa a biblioteca
+import phonenumbers # Importa a biblioteca
 
 # --- CONFIGURAÇÃO DO R2 ---
 R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
@@ -46,7 +46,7 @@ class MensagemPayload(BaseModel):
 app = FastAPI(
     title="API de Automação de WhatsApp",
     description="Orquestra o envio de campanhas via Gateway, com uploads para o Cloudflare R2.",
-    version="0.6.0" # Nova versão com validação
+    version="0.7.0" # Nova versão com validação corrigida
 )
 
 origins = ["*"]
@@ -86,29 +86,27 @@ async def gerar_url_upload(payload: UrlPayload):
 @app.post("/enviar-teste")
 async def enviar_mensagem_teste(payload: MensagemPayload):
     
-    # --- NOVO: BLOCO DE VALIDAÇÃO E FORMATAÇÃO DO NÚMERO ---
+    # --- NOVO: BLOCO DE VALIDAÇÃO E FORMATAÇÃO (VERSÃO CORRIGIDA) ---
     numero_formatado = None
     try:
-        # A biblioteca tentará entender o número, assumindo que é do Brasil ("BR")
-        numero_parseado = phonenumbers.parse(payload.numero, "BR")
-        
-        # Validação do tipo de número
-        tipo_numero = phonenumbers.number_type(numero_parseado)
-        
-        # Só permitimos o envio para números que são MOBILE ou FIXED_LINE_OR_MOBILE
-        if tipo_numero not in [phonenumbers.PhoneNumberType.MOBILE, phonenumbers.PhoneNumberType.FIXED_LINE_OR_MOBILE]:
-            raise ValueError(f"O número {payload.numero} não é um celular válido.")
-            
-        # Verificamos se o número é possivelmente válido após o parse
-        if not phonenumbers.is_valid_number(numero_parseado):
-            raise ValueError("Número de telefone inválido.")
+        # Para garantir a análise correta, adicionamos um '+' se o número não o tiver
+        numero_bruto = payload.numero
+        if not numero_bruto.startswith('+'):
+            numero_bruto = f"+{numero_bruto}"
 
-        # Formatamos o número para o padrão internacional sem o '+' (ex: 5511999998888)
+        # A biblioteca agora analisa o número no formato internacional
+        numero_parseado = phonenumbers.parse(numero_bruto, None)
+        
+        # A ÚNICA VERIFICAÇÃO QUE FAZEMOS É SE O NÚMERO É VÁLIDO PARA A REGIÃO.
+        # Não importa mais se é fixo ou celular.
+        if not phonenumbers.is_valid_number(numero_parseado):
+            raise ValueError(f"O formato do número {payload.numero} é inválido.")
+
+        # Formatamos para o padrão E164 (ex: +5511999998888) e removemos o '+' para o gateway.
         numero_formatado = phonenumbers.format_number(numero_parseado, phonenumbers.PhoneNumberFormat.E164)[1:]
 
     except Exception as e:
         print(f"Erro ao validar o número {payload.numero}: {e}")
-        # Retorna um erro claro para o frontend, que será exibido no log
         raise HTTPException(status_code=400, detail=f"O número '{payload.numero}' foi bloqueado pela validação: {e}")
     # --- FIM DO NOVO BLOCO ---
 
@@ -117,7 +115,7 @@ async def enviar_mensagem_teste(payload: MensagemPayload):
         anexo_url_final = f"{R2_PUBLIC_URL}/{payload.anexo_key}"
 
     gateway_payload = {
-        "number": numero_formatado, # Usamos o número já limpo e formatado
+        "number": numero_formatado,
         "message": payload.mensagem,
         "anexoUrl": anexo_url_final,
         "fileName": payload.original_file_name,
@@ -136,4 +134,4 @@ async def enviar_mensagem_teste(payload: MensagemPayload):
 
 @app.get("/")
 def ler_raiz():
-    return {"status": "Backend da Automação de WhatsApp (com R2 e Validação) está no ar!"}
+    return {"status": "Backend da Automação de WhatsApp (com R2 e Validação Final) está no ar!"}
