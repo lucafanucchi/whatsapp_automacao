@@ -55,6 +55,44 @@ app.post('/logout', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false, error: 'Falha ao fazer logout.' }); }
 });
 
+app.post('/verify-number', async (req, res) => {
+    const { number } = req.body;
+    if (!sock || connectionStatus !== 'open') {
+        return res.status(503).json({ error: 'Gateway não conectado.' });
+    }
+    if (!number) {
+        return res.status(400).json({ error: 'Número não fornecido.' });
+    }
+
+    try {
+        // Tentativa 1: Verificar o número como foi recebido (potencialmente com 9 dígitos)
+        const [result] = await sock.onWhatsApp(number);
+        if (result?.exists) {
+            // Se existir, retorna o número confirmado (JID sem o sufixo @s.whatsapp.net)
+            return res.json({ success: true, correctedNumber: result.jid.split('@')[0] });
+        }
+        
+        // Tentativa 2: Se não existir e for um número brasileiro de 9 dígitos, tenta remover o 9
+        const ddd = number.substring(2, 4);
+        const numeroLocal = number.substring(4);
+
+        if (number.startsWith('55') && numeroLocal.length === 9 && numeroLocal.startsWith('9')) {
+            const numeroSemNove = `55${ddd}${numeroLocal.substring(1)}`;
+            const [resultSemNove] = await sock.onWhatsApp(numeroSemNove);
+            if (resultSemNove?.exists) {
+                return res.json({ success: true, correctedNumber: resultSemNove.jid.split('@')[0] });
+            }
+        }
+        
+        // Se nenhuma tentativa funcionar, o número não foi encontrado
+        return res.status(404).json({ success: false, message: 'Número não encontrado no WhatsApp.' });
+
+    } catch (error) {
+        console.error("Erro na verificação do número:", error);
+        res.status(500).json({ error: 'Erro interno ao verificar o número.' });
+    }
+});
+
 
 app.post('/send-message', (req, res) => {
     const { number, message, anexoUrl, fileName, mimeType } = req.body;
