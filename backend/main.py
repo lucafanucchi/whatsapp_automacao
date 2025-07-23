@@ -2,30 +2,54 @@
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import httpx
 from pydantic import BaseModel
 from typing import Optional
+import httpx
 import boto3
 import os
 import uuid
-# Removido: phonenumbers não é mais a ferramenta principal para esta lógica
-# import phonenumbers 
+import asyncio
+import random
 
-# --- CONFIGURAÇÃO DO R2 (sem alterações) ---
+# =================================================================================
+# --- CONFIGURAÇÃO PRINCIPAL ---
+# Altere estas variáveis com os dados do seu ambiente.
+# =================================================================================
+
+# --- Configurações da Evolution API ---
+EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL")  # O endereço IP do seu VPS onde a Evolution API está rodando.
+# ATENÇÃO: Substitua pela sua chave real que está no docker-compose.yml
+EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY")
+
+# --- Configurações do Cloudflare R2 (lidas do ambiente) ---
 R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
 R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
 R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
 R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME")
-R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL") 
-R2_ENDPOINT_URL = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-if not R2_PUBLIC_URL:
-    raise ValueError("A variável de ambiente R2_PUBLIC_URL não está configurada.")
-s3 = boto3.client('s3', endpoint_url=R2_ENDPOINT_URL, aws_access_key_id=R2_ACCESS_KEY_ID, aws_secret_access_key=R2_SECRET_ACCESS_KEY, region_name='auto')
+R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL")
 
-# --- MODELOS Pydantic (sem alterações) ---
+# Validação das variáveis de ambiente do R2
+if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_PUBLIC_URL]):
+    raise ValueError("Uma ou mais variáveis de ambiente do Cloudflare R2 não estão configuradas.")
+
+# =================================================================================
+# --- INICIALIZAÇÃO DE SERVIÇOS E DA APLICAÇÃO ---
+# =================================================================================
+
+# Cliente S3 para o Cloudflare R2
+s3 = boto3.client(
+    's3',
+    endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
+    aws_access_key_id=R2_ACCESS_KEY_ID,
+    aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+    region_name='auto'
+)
+
+# Modelos Pydantic para validação de dados
 class UrlPayload(BaseModel):
     file_name: str
     content_type: str
+
 class MensagemPayload(BaseModel):
     numero: str
     mensagem: str
@@ -33,69 +57,148 @@ class MensagemPayload(BaseModel):
     mime_type: Optional[str] = None
     original_file_name: Optional[str] = None
 
-# --- APLICAÇÃO FastAPI (sem alterações) ---
-app = FastAPI(title="API de Automação de WhatsApp", description="Orquestra o envio de campanhas via Gateway, com uploads para o Cloudflare R2.", version="0.9.0")
-origins = ["*"]
-app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-GATEWAY_URL = "http://whatsapp-gateway-a9iz:10000" # URL base do gateway
+# Aplicação FastAPI
+app = FastAPI(
+    title="API de Automação de WhatsApp com Evolution",
+    description="Orquestra o envio de campanhas via Evolution API, com uploads para o Cloudflare R2 e gerenciamento de conexão.",
+    version="2.0.0"
+)
 
-# --- ENDPOINTS ---
+# Middleware CORS para permitir acesso de qualquer origem (seu frontend)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.post("/gerar-url-upload")
-async def gerar_url_upload(payload: UrlPayload):
-    # (Este endpoint continua exatamente o mesmo)
-    clean_file_name = payload.file_name.replace(" ", "_")
-    unique_key = f"{uuid.uuid4()}-{clean_file_name}"
-    try:
-        presigned_url = s3.generate_presigned_url(ClientMethod='put_object', Params={'Bucket': R2_BUCKET_NAME, 'Key': unique_key, 'ContentType': payload.content_type}, ExpiresIn=3600)
-        return {"upload_url": presigned_url, "object_key": unique_key}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Não foi possível gerar a URL de upload.")
+# Headers de autenticação para a Evolution API
+headers = {
+    "apikey": EVOLUTION_API_KEY
+}
 
-@app.post("/enviar-teste")
-async def enviar_mensagem_teste(payload: MensagemPayload):
-    
-    # --- NOVO: VERIFICAÇÃO ATIVA DO NÚMERO ---
-    numero_corrigido = None
-    try:
-        async with httpx.AsyncClient() as client:
-            # Chama o novo endpoint de verificação no gateway
-            verify_response = await client.post(f"{GATEWAY_URL}/verify-number", json={"number": payload.numero}, timeout=10.0)
-            
-            if verify_response.status_code == 200:
-                numero_corrigido = verify_response.json().get("correctedNumber")
-            else:
-                # Se o gateway retornar um erro (ex: 404 Not Found), levanta uma exceção
-                error_detail = verify_response.json().get("message", "Número não encontrado no WhatsApp.")
-                raise HTTPException(status_code=400, detail=error_detail)
-                
-    except HTTPException as e:
-        raise e # Repassa a exceção do gateway para o frontend
-    except Exception as e:
-        print(f"Erro ao verificar o número {payload.numero}: {e}")
-        raise HTTPException(status_code=503, detail=f"Não foi possível verificar o número {payload.numero} no gateway.")
-    # --- FIM DA VERIFICAÇÃO ---
-
-    anexo_url_final = None
-    if payload.anexo_key:
-        anexo_url_final = f"{R2_PUBLIC_URL}/{payload.anexo_key}"
-
-    gateway_payload = {
-        "number": numero_corrigido, # Usa o número que o gateway confirmou que existe!
-        "message": payload.mensagem,
-        "anexoUrl": anexo_url_final,
-        "fileName": payload.original_file_name,
-        "mimeType": payload.mime_type
-    }
-
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{GATEWAY_URL}/send-message", json=gateway_payload, timeout=30.0)
-        response.raise_for_status() 
-        return response.json()
-    except Exception as e:
-        raise HTTPException(status_code=503, detail="Não foi possível se comunicar com o Gateway de WhatsApp para o envio.")
+# =================================================================================
+# --- ENDPOINTS DA APLICAÇÃO ---
+# =================================================================================
 
 @app.get("/")
 def ler_raiz():
-    return {"status": "Backend da Automação de WhatsApp (com Verificação Ativa) está no ar!"}
+    return {"status": "Backend da Automação de WhatsApp (com Evolution API) está no ar!"}
+
+@app.post("/gerar-url-upload")
+async def gerar_url_upload(payload: UrlPayload):
+    """Gera uma URL pré-assinada para o frontend fazer upload de um arquivo diretamente para o R2."""
+    clean_file_name = payload.file_name.replace(" ", "_")
+    unique_key = f"{uuid.uuid4()}-{clean_file_name}"
+    try:
+        presigned_url = s3.generate_presigned_url(
+            ClientMethod='put_object',
+            Params={'Bucket': R2_BUCKET_NAME, 'Key': unique_key, 'ContentType': payload.content_type},
+            ExpiresIn=3600
+        )
+        return {"upload_url": presigned_url, "object_key": unique_key}
+    except Exception as e:
+        print(f"Erro ao gerar URL de upload: {e}")
+        raise HTTPException(status_code=500, detail="Não foi possível gerar a URL de upload.")
+
+@app.post("/enviar/{instance_name}")
+async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
+    """
+    Verifica um número e envia uma mensagem (texto ou mídia) através de uma instância específica da Evolution API.
+    """
+    numero_para_envio = ''.join(filter(str.isdigit, payload.numero))
+    
+    # 1. Verifica se o número existe no WhatsApp
+    try:
+        async with httpx.AsyncClient() as client:
+            check_url = f"{EVOLUTION_API_URL}/chat/checkNumberStatus/{instance_name}/{numero_para_envio}"
+            check_response = await client.get(check_url, headers=headers, timeout=10.0)
+            if check_response.status_code != 200 or not check_response.json().get("numberExists"):
+                raise HTTPException(status_code=404, detail=f"Número ({payload.numero}) não encontrado no WhatsApp.")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Erro ao verificar número na Evolution API: {e}")
+
+    # 2. Prepara a simulação de digitação para humanizar
+    try:
+        async with httpx.AsyncClient() as client:
+            presence_url = f"{EVOLUTION_API_URL}/chat/sendPresence/{instance_name}"
+            await client.post(presence_url, json={"number": numero_para_envio, "presence": "composing"}, headers=headers)
+            await asyncio.sleep(random.randint(1, 3))
+    except Exception:
+        pass # Não impede o envio se a simulação de presença falhar
+
+    # 3. Monta e envia a mensagem
+    anexo_url_final = f"{R2_PUBLIC_URL}/{payload.anexo_key}" if payload.anexo_key else None
+    
+    endpoint_url = ""
+    request_payload = {}
+
+    if not anexo_url_final:
+        endpoint_url = f"{EVOLUTION_API_URL}/message/sendText/{instance_name}"
+        request_payload = {"number": numero_para_envio, "textMessage": {"text": payload.mensagem}}
+    else:
+        endpoint_url = f"{EVOLUTION_API_URL}/message/sendMedia/{instance_name}"
+        media_type = "image"
+        if payload.mime_type and payload.mime_type.startswith('video'):
+            media_type = "video"
+        elif payload.mime_type and payload.mime_type == 'application/pdf':
+            media_type = "document"
+        
+        request_payload = {
+            "number": numero_para_envio,
+            "mediaMessage": {
+                "mediaType": media_type,
+                "url": anexo_url_final,
+                "caption": payload.mensagem,
+                "fileName": payload.original_file_name or "anexo"
+            }
+        }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(endpoint_url, json=request_payload, headers=headers, timeout=30.0)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Falha ao enviar mensagem pela Evolution API: {e}")
+
+@app.get("/conectar/qr-code/{instance_name}")
+async def get_qr_code(instance_name: str):
+    """Busca o QR Code de uma instância para ser exibido no frontend."""
+    try:
+        async with httpx.AsyncClient() as client:
+            connect_url = f"{EVOLUTION_API_URL}/instance/connect/{instance_name}"
+            response = await client.get(connect_url, headers=headers, timeout=30.0)
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=e.response.json())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar QR Code: {e}")
+
+@app.get("/conectar/status/{instance_name}")
+async def get_instance_status(instance_name: str):
+    """Verifica o status da conexão de uma instância."""
+    try:
+        async with httpx.AsyncClient() as client:
+            status_url = f"{EVOLUTION_API_URL}/instance/connectionState/{instance_name}"
+            response = await client.get(status_url, headers=headers, timeout=10.0)
+            response.raise_for_status()
+            connection_state = response.json().get("instance", {}).get("state", "close")
+            return {"status": connection_state}
+    except Exception:
+        return {"status": "close"} # Assume como desconectado se houver erro
+
+@app.post("/conectar/logout/{instance_name}")
+async def logout_instance(instance_name: str):
+    """Desconecta uma instância para permitir uma nova conexão."""
+    try:
+        async with httpx.AsyncClient() as client:
+            logout_url = f"{EVOLUTION_API_URL}/instance/logout/{instance_name}"
+            # O logout pode ser POST ou DELETE dependendo da versão, DELETE é mais semântico
+            response = await client.delete(logout_url, headers=headers, timeout=30.0)
+            response.raise_for_status()
+            return {"success": True, "message": f"Instância {instance_name} desconectada com sucesso."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao desconectar instância: {e}")
