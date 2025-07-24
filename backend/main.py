@@ -10,7 +10,7 @@ import os
 import uuid
 import asyncio
 import random
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # =================================================================================
 # --- CONFIGURAÇÃO PRINCIPAL ---
@@ -132,9 +132,14 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
         campaign_history[instance_name] = []
 
     campaign_id = str(uuid.uuid4())
+
+    utc_now = datetime.now(timezone.utc)
+    br_tz = timezone(timedelta(hours=-3))
+    br_now = utc_now.astimezone(br_tz)
+    start_time_br = br_now.strftime("%Y-%m-%d %H:%M:%S")
     log_entry = {
         "id": campaign_id,
-        "startTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "startTime": start_time_br,
         "status": "Iniciada",
         "totalContacts": 0, # Será atualizado depois
         "sentCount": 0,

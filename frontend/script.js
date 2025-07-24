@@ -28,7 +28,8 @@ const previewMensagem = document.getElementById('preview-mensagem');
 const previewPdfContainer = document.getElementById('preview-pdf-container');
 const previewPdfFilename = document.getElementById('preview-pdf-filename');
 const previewVideo = document.getElementById('preview-video');
-
+const toggleHistoryBtn = document.getElementById('toggle-history-btn');
+const historySection = document.getElementById('history-section');
 
 // =============================================================================
 // --- GERENCIAMENTO DE ESTADO E INICIALIZAÇÃO ---
@@ -307,13 +308,26 @@ function mostrarTelaPrincipal() {
     }
     telaConexao.style.display = 'none';
     telaPrincipal.style.display = 'block';
+
     const listaSalva = localStorage.getItem('listaNumerosSalva');
     if (listaSalva) {
         numerosTextarea.value = listaSalva;
     }
 
-    carregarHistoricoDeCampanhas();
+    
 }
+
+// --- ADICIONE ESTE NOVO BLOCO DE CÓDIGO ---
+// Ele controla a visibilidade do histórico
+toggleHistoryBtn.addEventListener('click', () => {
+    const isVisible = historySection.style.display === 'block';
+    if (isVisible) {
+        historySection.style.display = 'none';
+    } else {
+        historySection.style.display = 'block';
+        carregarHistoricoDeCampanhas(); // Carrega o histórico apenas quando o usuário pede
+    }
+});
 
 function mostrarTelaDeConexao() {
     telaPrincipal.style.display = 'none';
