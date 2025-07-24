@@ -79,6 +79,9 @@ async function verificarStatusInicial() {
 }
 
 async function iniciarProcessoDeConexao() {
+    // A biblioteca QRCode.js precisa ser importada no seu index.html
+    // <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
+
     try {
         const response = await fetch(`${BACKEND_URL}/conectar/qr-code/${INSTANCE_NAME}`);
         if (!response.ok) {
@@ -87,24 +90,31 @@ async function iniciarProcessoDeConexao() {
         
         const data = await response.json();
         
-        if (data && data.qr) {
-            // SUCESSO: A API retornou o texto do QR Code
+        // --- AJUSTE FINAL E DEFINITIVO ---
+        // Agora procuramos pela chave "pairingCode" que a API V1 nos envia.
+        if (data && data.pairingCode) {
+            // SUCESSO: A API retornou o código de pareamento.
             qrCodeWrapper.innerHTML = '';
+            
+            // Usamos o valor de "pairingCode" para gerar o QR Code.
             new QRCode(qrCodeWrapper, {
-                text: data.qr,
+                text: data.pairingCode,
                 width: 250,
                 height: 250,
             });
+
             statusConexaoDiv.textContent = 'QR Code pronto! Escaneie com seu celular.';
-            comecarPollingDeStatus();
+            comecarPollingDeStatus(); // Começa a verificar se o usuário escaneou
 
         } else if (data && data.status === 'connecting') {
             // PACIÊNCIA: A API está conectando. Vamos tentar de novo.
             statusConexaoDiv.textContent = 'Inicializando conexão... Gerando QR Code em breve.';
-            setTimeout(iniciarProcessoDeConexao, 3000); // Tenta novamente em 3 segundos
+            setTimeout(iniciarProcessoDeconectar, 3000); // Tenta novamente em 3 segundos
         } else {
+            // ERRO: A API não retornou nem "pairingCode" nem "connecting".
             throw new Error('A API retornou uma resposta inesperada.');
         }
+        // --- FIM DO AJUSTE ---
 
     } catch (error) {
         console.error("Erro no processo de conexão:", error);
