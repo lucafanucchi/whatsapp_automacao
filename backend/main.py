@@ -102,14 +102,14 @@ async def gerar_url_upload(payload: UrlPayload):
         print(f"Erro ao gerar URL de upload: {e}")
         raise HTTPException(status_code=500, detail="Não foi possível gerar a URL de upload.")
 
+# Em main.py, substitua a função de envio inteira por esta versão final e correta:
+
 @app.post("/enviar/{instance_name}")
 async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
     """
     Envia uma mensagem (texto ou mídia) com o payload formatado corretamente para a Evolution API v2.
     """
     numero_para_envio = ''.join(filter(str.isdigit, payload.numero))
-    
-    # --- AJUSTE FINAL: Montagem do Payload Correto ---
     
     endpoint_url = ""
     request_payload = {}
@@ -130,7 +130,7 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
             }
         }
     else:
-        # CORREÇÃO: Payload para mensagens de MÍDIA (agora com estrutura plana)
+        # --- CORREÇÃO FINAL E DEFINITIVA: Payload para MÍDIA com estrutura "plana" ---
         endpoint_url = f"{EVOLUTION_API_URL}/message/sendMedia/{instance_name}"
         
         media_type = "image"
@@ -145,24 +145,23 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
                 "delay": 1200,
                 "presence": "composing"
             },
-            "mediaMessage": {
-                "mediatype": media_type,
-                "caption": payload.mensagem,
-                "media": anexo_url_final, # A chave correta é "media"
-                "fileName": payload.original_file_name or "anexo"
-            }
+            # Todas as propriedades da mídia estão agora no nível principal, como a API espera.
+            "mediatype": media_type,
+            "caption": payload.mensagem,
+            "media": anexo_url_final,
+            "fileName": payload.original_file_name or "anexo"
         }
-    # --- FIM DO AJUSTE ---
+        # --- FIM DA CORREÇÃO ---
 
     try:
         async with httpx.AsyncClient() as client:
             print(f"DEBUG: Enviando para {endpoint_url} com payload: {request_payload}")
-            response = await client.post(endpoint_url, json=request_payload, headers=headers, timeout=30.0)
+            # Aumentado o timeout para dar tempo de a API baixar e processar a mídia
+            response = await client.post(endpoint_url, json=request_payload, headers=headers, timeout=60.0) 
         
         response.raise_for_status()
         return response.json()
     except httpx.HTTPStatusError as e:
-        # Loga a resposta exata da API em caso de erro
         print(f"ERRO da Evolution API: {e.response.status_code} - {e.response.text}")
         raise HTTPException(status_code=503, detail=f"A Evolution API retornou um erro: {e.response.text}")
     except Exception as e:
