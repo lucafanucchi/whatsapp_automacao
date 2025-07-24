@@ -113,23 +113,26 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
     
     endpoint_url = ""
     request_payload = {}
-    delay_aleatorio_ms = random.randint(1000, 2500) # Delay de 1 a 2.5 segundos
 
     anexo_url_final = f"{R2_PUBLIC_URL}/{payload.anexo_key}" if payload.anexo_key else None
 
     if not anexo_url_final:
-        # Payload para mensagens de TEXTO
+        # Payload para mensagens de TEXTO (que já estava correto)
         endpoint_url = f"{EVOLUTION_API_URL}/message/sendText/{instance_name}"
         request_payload = {
             "number": numero_para_envio,
-            "text": payload.mensagem, # A propriedade é 'text', não um objeto 'textMessage'
+            "textMessage": {
+                "text": payload.mensagem
+            },
             "options": {
-                "delay": delay_aleatorio_ms
+                "delay": 1200,
+                "presence": "composing"
             }
         }
     else:
-        # Payload para mensagens de MÍDIA
+        # CORREÇÃO: Payload para mensagens de MÍDIA (agora com estrutura plana)
         endpoint_url = f"{EVOLUTION_API_URL}/message/sendMedia/{instance_name}"
+        
         media_type = "image"
         if payload.mime_type and payload.mime_type.startswith('video'):
             media_type = "video"
@@ -138,36 +141,32 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
         
         request_payload = {
             "number": numero_para_envio,
-            "media": {
-                "url": anexo_url_final,
-                "mediaType": media_type,
-                "caption": payload.mensagem,
-                "fileName": payload.original_file_name or "anexo"
-            },
             "options": {
-                "delay": delay_aleatorio_ms
+                "delay": 1200,
+                "presence": "composing"
+            },
+            "mediaMessage": {
+                "mediatype": media_type,
+                "caption": payload.mensagem,
+                "media": anexo_url_final, # A chave correta é "media"
+                "fileName": payload.original_file_name or "anexo"
             }
         }
     # --- FIM DO AJUSTE ---
 
-    # A parte de envio continua a mesma, pois a falha estava na montagem do payload
     try:
-        # Adiciona a simulação de "digitando" que já tínhamos
-        async with httpx.AsyncClient() as client:
-            presence_url = f"{EVOLUTION_API_URL}/chat/sendPresence/{instance_name}"
-            await client.post(presence_url, json={"number": numero_para_envio, "presence": "composing"}, headers=headers)
-            await asyncio.sleep(random.randint(1, 2))
-
-        # Envia a mensagem com o payload correto
         async with httpx.AsyncClient() as client:
             print(f"DEBUG: Enviando para {endpoint_url} com payload: {request_payload}")
             response = await client.post(endpoint_url, json=request_payload, headers=headers, timeout=30.0)
         
         response.raise_for_status()
         return response.json()
+    except httpx.HTTPStatusError as e:
+        # Loga a resposta exata da API em caso de erro
+        print(f"ERRO da Evolution API: {e.response.status_code} - {e.response.text}")
+        raise HTTPException(status_code=503, detail=f"A Evolution API retornou um erro: {e.response.text}")
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Falha ao enviar mensagem pela Evolution API: {e}")
-
 # Em main.py, substitua a função get_qr_code inteira por esta versão final:
 
 @app.get("/conectar/qr-code/{instance_name}")
