@@ -284,7 +284,7 @@ async def logout_instance(instance_name: str):
         raise HTTPException(status_code=500, detail=f"Erro ao desconectar instância: {e}")
     
 # --- NOVO ENDPOINT PARA CONSULTAR O HISTÓRICO ---
-@app.get("/campanhas/{instance_name}", response_model=List[CampaignLog])
+@app.get("/campanhas/{instance_name}", response_model=list[CampaignLog])
 async def get_campaign_history(instance_name: str):
     """Retorna o histórico de campanhas para uma instância específica."""
     return campaign_history.get(instance_name, [])
