@@ -1,9 +1,9 @@
-# backend/main.py (Versão com a Correção Final do Payload de Texto)
+# backend/main.py
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Optional
 import httpx
 import boto3
 import os
@@ -14,21 +14,35 @@ from datetime import datetime, timezone, timedelta
 
 # =================================================================================
 # --- CONFIGURAÇÃO PRINCIPAL ---
+# Altere estas variáveis com os dados do seu ambiente.
 # =================================================================================
 
-EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL")
-EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY") # Corrigido para a variável correta do .env
+# --- Configurações da Evolution API ---
+EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL")  # O endereço IP do seu VPS onde a Evolution API está rodando.
+# ATENÇÃO: Substitua pela sua chave real que está no docker-compose.yml
+EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY")
 
+# --- Configurações do Cloudflare R2 (lidas do ambiente) ---
 R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
 R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
 R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
 R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME")
 R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL")
 
+# --- NOVO: "Banco de Dados" em Memória para Histórico de Campanhas ---
+# Para simplificar, usaremos um dicionário. Em um sistema de produção maior,
+# isso seria uma tabela no seu banco de dados PostgreSQL.
+
+
+# Validação das variáveis de ambiente do R2
+if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_PUBLIC_URL]):
+    raise ValueError("Uma ou mais variáveis de ambiente do Cloudflare R2 não estão configuradas.")
+
 # =================================================================================
-# --- INICIALIZAÇÃO E MODELOS ---
+# --- INICIALIZAÇÃO DE SERVIÇOS E DA APLICAÇÃO ---
 # =================================================================================
 
+# Cliente S3 para o Cloudflare R2
 s3 = boto3.client(
     's3',
     endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
@@ -37,12 +51,19 @@ s3 = boto3.client(
     region_name='auto'
 )
 
-campaign_history: Dict[str, List] = {}
-
+# Modelos Pydantic para validação de dados
 class UrlPayload(BaseModel):
     file_name: str
     content_type: str
 
+class MensagemPayload(BaseModel):
+    numero: str
+    mensagem: str
+    anexo_key: Optional[str] = None
+    mime_type: Optional[str] = None
+    original_file_name: Optional[str] = None
+
+# --- Novos Modelos Pydantic ---
 class Contato(BaseModel):
     numero: str
     nome: Optional[str] = None
@@ -55,16 +76,23 @@ class CampaignLog(BaseModel):
     totalContacts: int
     sentCount: int
     failedCount: int
-    lastContactProcessed: Optional[str] = None
+    lastContactProcessed: Optional[str] = None # Novo campo para o log em tempo real
 
 class CampanhaPayload(BaseModel):
-    contatos: List[Contato]
+    contatos: list[Contato]
     mensagem: str
     anexo_key: Optional[str] = None
     mime_type: Optional[str] = None
     original_file_name: Optional[str] = None
 
-app = FastAPI(title="API de Automação de WhatsApp", version="4.1.0")
+# Aplicação FastAPI
+app = FastAPI(
+    title="API de Automação de WhatsApp com Evolution",
+    description="Orquestra o envio de campanhas via Evolution API, com uploads para o Cloudflare R2 e gerenciamento de conexão.",
+    version="2.0.0"
+)
+
+# Middleware CORS para permitir acesso de qualquer origem (seu frontend)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -72,10 +100,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-headers = { "apikey": EVOLUTION_API_KEY }
+
+campaign_history = {}
+
+# Headers de autenticação para a Evolution API
+headers = {
+    "apikey": EVOLUTION_API_KEY
+}
 
 # =================================================================================
-# --- LÓGICA DE ENVIO EM SEGUNDO PLANO ---
+# --- ENDPOINTS DA APLICAÇÃO ---
 # =================================================================================
 
 async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload, log_entry: CampaignLog):
@@ -91,7 +125,6 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
             if not anexo_url_final:
                 # --- CORREÇÃO FINAL PARA TEXTO ---
                 endpoint_url = f"{EVOLUTION_API_URL}/message/sendText/{instance_name}"
-                # A API espera um objeto "textMessage" aninhado, mas a chave é 'text'
                 request_payload = {
                     "number": numero_para_envio,
                     "textMessage": {
@@ -102,7 +135,6 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
                         "presence": "composing"
                     }
                 }
-                # --- FIM DA CORREÇÃO ---
             else:
                 endpoint_url = f"{EVOLUTION_API_URL}/message/sendMedia/{instance_name}"
                 media_type = "image"
@@ -139,16 +171,13 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
     log_entry.status = "Finalizada" if log_entry.failedCount == 0 else "Finalizada com erros"
     print(f"Campanha {log_entry.id} finalizada.")
 
-# =================================================================================
-# --- ENDPOINTS DA APLICAÇÃO ---
-# =================================================================================
-
 @app.get("/")
 def ler_raiz():
-    return {"status": "Backend da Automação de WhatsApp (v4.1) está no ar!"}
+    return {"status": "Backend da Automação de WhatsApp (com Evolution API) está no ar!"}
 
 @app.post("/gerar-url-upload")
 async def gerar_url_upload(payload: UrlPayload):
+    """Gera uma URL pré-assinada para o frontend fazer upload de um arquivo diretamente para o R2."""
     clean_file_name = payload.file_name.replace(" ", "_")
     unique_key = f"{uuid.uuid4()}-{clean_file_name}"
     try:
@@ -159,7 +188,10 @@ async def gerar_url_upload(payload: UrlPayload):
         )
         return {"upload_url": presigned_url, "object_key": unique_key}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Não foi possível gerar a URL de upload: {e}")
+        print(f"Erro ao gerar URL de upload: {e}")
+        raise HTTPException(status_code=500, detail="Não foi possível gerar a URL de upload.")
+
+# Em main.py, substitua a função de envio inteira por esta versão final e correta:
 
 @app.post("/campanhas/enviar/{instance_name}")
 async def enviar_campanha(instance_name: str, payload: CampanhaPayload):
@@ -185,45 +217,53 @@ async def enviar_campanha(instance_name: str, payload: CampanhaPayload):
 
     return {"status": "Campanha recebida e iniciada com sucesso.", "campaign_id": campaign_id}
 
-@app.get("/campanhas/status/{campaign_id}")
-async def get_campaign_status(campaign_id: str):
-    for instance_campaigns in campaign_history.values():
-        for campaign in instance_campaigns:
-            if campaign.id == campaign_id:
-                return campaign
-    raise HTTPException(status_code=404, detail="Campanha não encontrada.")
 
-@app.get("/campanhas/{instance_name}", response_model=List[CampaignLog])
-async def get_campaign_history(instance_name: str):
-    return campaign_history.get(instance_name, [])
-    
+
+# Em main.py, substitua a função get_qr_code inteira por esta versão final:
+
 @app.get("/conectar/qr-code/{instance_name}")
 async def get_qr_code(instance_name: str):
+    """
+    Obtém um QR Code para uma instância existente, desconectando-a primeiro se necessário.
+    """
     async with httpx.AsyncClient() as client:
         try:
+            # 1. Verifica o estado atual da instância.
             status_url = f"{EVOLUTION_API_URL}/instance/connectionState/{instance_name}"
             status_response = await client.get(status_url, headers=headers, timeout=10.0)
             instance_state = status_response.json().get("instance", {}).get("state")
+            print(f"Estado atual da instância '{instance_name}': {instance_state}")
 
+            # 2. Se a instância estiver conectada ('open'), força o logout primeiro.
             if instance_state == 'open':
+                print(f"Instância '{instance_name}' está conectada. Forçando logout...")
                 logout_url = f"{EVOLUTION_API_URL}/instance/logout/{instance_name}"
                 await client.delete(logout_url, headers=headers, timeout=30.0)
                 await asyncio.sleep(2)
+                print(f"Logout da instância '{instance_name}' finalizado.")
 
+            # 3. Agora que a instância está desconectada, pede o QR Code.
+            print(f"Solicitando QR Code para a instância '{instance_name}'...")
             connect_url = f"{EVOLUTION_API_URL}/instance/connect/{instance_name}"
             connect_response = await client.get(connect_url, headers=headers, timeout=30.0)
             connect_response.raise_for_status()
             
             qr_data = connect_response.json()
+            print(f"DEBUG: Resposta completa da API para o pedido de QR Code: {qr_data}")
+            
             if not qr_data.get("base64"):
-                raise HTTPException(status_code=500, detail="A API não retornou a chave 'base64'.")
+                raise HTTPException(status_code=500, detail="A API não retornou a chave 'base64' com os dados do QR Code.")
             
             return qr_data
+
         except Exception as e:
+            print(f"ERRO CRÍTICO no processo de obtenção de QR Code: {e}")
             raise HTTPException(status_code=500, detail=f"Erro crítico no backend: {e}")
+
 
 @app.get("/conectar/status/{instance_name}")
 async def get_instance_status(instance_name: str):
+    """Verifica o status da conexão de uma instância."""
     try:
         async with httpx.AsyncClient() as client:
             status_url = f"{EVOLUTION_API_URL}/instance/connectionState/{instance_name}"
@@ -232,15 +272,35 @@ async def get_instance_status(instance_name: str):
             connection_state = response.json().get("instance", {}).get("state", "close")
             return {"status": connection_state}
     except Exception:
-        return {"status": "close"}
+        return {"status": "close"} # Assume como desconectado se houver erro
 
 @app.post("/conectar/logout/{instance_name}")
 async def logout_instance(instance_name: str):
+    """Desconecta uma instância para permitir uma nova conexão."""
     try:
         async with httpx.AsyncClient() as client:
             logout_url = f"{EVOLUTION_API_URL}/instance/logout/{instance_name}"
+            # O logout pode ser POST ou DELETE dependendo da versão, DELETE é mais semântico
             response = await client.delete(logout_url, headers=headers, timeout=30.0)
             response.raise_for_status()
             return {"success": True, "message": f"Instância {instance_name} desconectada com sucesso."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao desconectar instância: {e}")
+    
+
+# --- NOVO ENDPOINT PARA STATUS EM TEMPO REAL ---
+@app.get("/campanhas/status/{campaign_id}")
+async def get_campaign_status(campaign_id: str):
+    """Busca o status atual de uma campanha específica pelo seu ID."""
+    for instance_campaigns in campaign_history.values():
+        for campaign in instance_campaigns:
+            if campaign.id == campaign_id:
+                return campaign
+    raise HTTPException(status_code=404, detail="Campanha não encontrada.")
+
+    
+# --- NOVO ENDPOINT PARA CONSULTAR O HISTÓRICO ---
+@app.get("/campanhas/{instance_name}", response_model=list[CampaignLog])
+async def get_campaign_history(instance_name: str):
+    """Retorna o histórico de campanhas para uma instância específica."""
+    return campaign_history.get(instance_name, [])
