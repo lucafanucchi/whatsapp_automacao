@@ -113,23 +113,27 @@ headers = {
 # =================================================================================
 
 async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload, log_entry: CampaignLog):
-    """Função que roda em segundo plano para enviar as mensagens da campanha uma a uma."""
     for contato in payload.contatos:
         try:
             numero_para_envio = ''.join(filter(str.isdigit, contato.numero))
             mensagem_personalizada = payload.mensagem.replace('{nome}', contato.nome or '').strip()
-            
             anexo_url_final = f"{R2_PUBLIC_URL}/{payload.anexo_key}" if payload.anexo_key else None
             
             endpoint_url = ""
             request_payload = {}
 
             if not anexo_url_final:
+                # --- CORREÇÃO FINAL PARA TEXTO ---
                 endpoint_url = f"{EVOLUTION_API_URL}/message/sendText/{instance_name}"
                 request_payload = {
                     "number": numero_para_envio,
-                    "textMessage": {"text": mensagem_personalizada},
-                    "options": {"delay": 1200, "presence": "composing"}
+                    "textMessage": {
+                        "text": mensagem_personalizada
+                    },
+                    "options": {
+                        "delay": 1200,
+                        "presence": "composing"
+                    }
                 }
             else:
                 endpoint_url = f"{EVOLUTION_API_URL}/message/sendMedia/{instance_name}"
@@ -147,6 +151,8 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
                     "fileName": payload.original_file_name or "anexo"
                 }
 
+            log_entry.lastContactProcessed = contato.numero
+            
             async with httpx.AsyncClient() as client:
                 response = await client.post(endpoint_url, json=request_payload, headers=headers, timeout=60.0)
                 response.raise_for_status()
@@ -159,8 +165,7 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
         utc_now = datetime.now(timezone.utc)
         br_tz = timezone(timedelta(hours=-3))
         log_entry.endTime = utc_now.astimezone(br_tz).strftime("%Y-%m-%d %H:%M:%S")
-
-        # Pausa com intervalo humano
+        
         await asyncio.sleep(random.randint(15, 28))
 
     log_entry.status = "Finalizada" if log_entry.failedCount == 0 else "Finalizada com erros"
@@ -190,7 +195,6 @@ async def gerar_url_upload(payload: UrlPayload):
 
 @app.post("/campanhas/enviar/{instance_name}")
 async def enviar_campanha(instance_name: str, payload: CampanhaPayload):
-    """Recebe uma campanha completa, a registra e inicia o envio em segundo plano."""
     if instance_name not in campaign_history:
         campaign_history[instance_name] = []
 
@@ -212,6 +216,7 @@ async def enviar_campanha(instance_name: str, payload: CampanhaPayload):
     asyncio.create_task(processar_envios_campanha(instance_name, payload, log_entry))
 
     return {"status": "Campanha recebida e iniciada com sucesso.", "campaign_id": campaign_id}
+
 
 
 # Em main.py, substitua a função get_qr_code inteira por esta versão final:
