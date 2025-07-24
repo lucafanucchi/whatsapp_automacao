@@ -238,6 +238,63 @@ async function enviarMensagemParaBackend(numero, mensagem, anexoKey = null, mime
     return response.json();
 }
 
+async function carregarHistoricoDeCampanhas() {
+    const container = document.getElementById('history-table-container');
+    container.innerHTML = '<p>Carregando histórico...</p>';
+
+    try {
+        const response = await fetch(`${BACKEND_URL}/campanhas/${INSTANCE_NAME}`);
+        if (!response.ok) {
+            throw new Error('Falha ao buscar histórico.');
+        }
+
+        const historico = await response.json();
+
+        if (historico.length === 0) {
+            container.innerHTML = '<p>Nenhuma atividade registrada ainda.</p>';
+            return;
+        }
+
+        // Cria uma tabela para exibir os dados
+        let tableHTML = `
+            <style>
+                .history-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+                .history-table th, .history-table td { border: 1px solid #eee; padding: 8px; text-align: left; }
+                .history-table th { background-color: #f9f9f9; }
+            </style>
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>Início</th>
+                        <th>Status</th>
+                        <th>Contatos</th>
+                        <th>Sucessos</th>
+                        <th>Falhas</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        historico.forEach(campanha => {
+            tableHTML += `
+                <tr>
+                    <td>${campanha.startTime}</td>
+                    <td>${campanha.status}</td>
+                    <td>${campanha.totalContacts}</td>
+                    <td style="color: green;">${campanha.sentCount}</td>
+                    <td style="color: red;">${campanha.failedCount}</td>
+                </tr>
+            `;
+        });
+
+        tableHTML += '</tbody></table>';
+        container.innerHTML = tableHTML;
+
+    } catch (error) {
+        container.innerHTML = `<p style="color: red;">${error.message}</p>`;
+    }
+}
+
 
 // =============================================================================
 // --- FUNÇÕES AUXILIARES E DE UI (SUA LÓGICA ORIGINAL PRESERVADA) ---
@@ -254,6 +311,8 @@ function mostrarTelaPrincipal() {
     if (listaSalva) {
         numerosTextarea.value = listaSalva;
     }
+
+    carregarHistoricoDeCampanhas();
 }
 
 function mostrarTelaDeConexao() {

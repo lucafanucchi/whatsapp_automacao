@@ -10,6 +10,7 @@ import os
 import uuid
 import asyncio
 import random
+from datetime import datetime
 
 # =================================================================================
 # --- CONFIGURAÇÃO PRINCIPAL ---
@@ -27,6 +28,11 @@ R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
 R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
 R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME")
 R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL")
+
+# --- NOVO: "Banco de Dados" em Memória para Histórico de Campanhas ---
+# Para simplificar, usaremos um dicionário. Em um sistema de produção maior,
+# isso seria uma tabela no seu banco de dados PostgreSQL.
+
 
 # Validação das variáveis de ambiente do R2
 if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_PUBLIC_URL]):
@@ -73,6 +79,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+campaign_history = {}
+
+class CampaignLog(BaseModel):
+    id: str
+    startTime: str
+    status: str
+    totalContacts: int
+    sentCount: int
+    failedCount: int
+
 # Headers de autenticação para a Evolution API
 headers = {
     "apikey": EVOLUTION_API_KEY
@@ -110,6 +126,23 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
     Envia uma mensagem (texto ou mídia) com o payload formatado corretamente para a Evolution API v2.
     """
     numero_para_envio = ''.join(filter(str.isdigit, payload.numero))
+
+    # --- LÓGICA DE RASTREAMENTO INSERIDA AQUI ---
+    if instance_name not in campaign_history:
+        campaign_history[instance_name] = []
+
+    campaign_id = str(uuid.uuid4())
+    log_entry = {
+        "id": campaign_id,
+        "startTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "status": "Iniciada",
+        "totalContacts": 0, # Será atualizado depois
+        "sentCount": 0,
+        "failedCount": 0
+    }
+
+    # Adicionamos no início da lista para aparecer primeiro no frontend
+    campaign_history[instance_name].insert(0, log_entry)
     
     endpoint_url = ""
     request_payload = {}
@@ -160,12 +193,28 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
             response = await client.post(endpoint_url, json=request_payload, headers=headers, timeout=60.0) 
         
         response.raise_for_status()
+        # ATUALIZA O LOG COM SUCESSO
+        log_entry["sentCount"] += 1
         return response.json()
     except httpx.HTTPStatusError as e:
         print(f"ERRO da Evolution API: {e.response.status_code} - {e.response.text}")
         raise HTTPException(status_code=503, detail=f"A Evolution API retornou um erro: {e.response.text}")
+    
+    
     except Exception as e:
+        # ATUALIZA O LOG COM FALHA
+        log_entry["failedCount"] += 1
         raise HTTPException(status_code=503, detail=f"Falha ao enviar mensagem pela Evolution API: {e}")
+    finally:
+        # ATUALIZA O STATUS E TOTAL AO FINAL DE CADA ENVIO INDIVIDUAL
+        # (Em um sistema real, você faria isso após o loop no frontend)
+        log_entry["totalContacts"] += 1 
+        if log_entry["failedCount"] > 0:
+            log_entry["status"] = "Finalizada com erros"
+        else:
+            log_entry["status"] = "Finalizada"
+
+
 # Em main.py, substitua a função get_qr_code inteira por esta versão final:
 
 @app.get("/conectar/qr-code/{instance_name}")
@@ -233,3 +282,9 @@ async def logout_instance(instance_name: str):
             return {"success": True, "message": f"Instância {instance_name} desconectada com sucesso."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao desconectar instância: {e}")
+    
+# --- NOVO ENDPOINT PARA CONSULTAR O HISTÓRICO ---
+@app.get("/campanhas/{instance_name}", response_model=List[CampaignLog])
+async def get_campaign_history(instance_name: str):
+    """Retorna o histórico de campanhas para uma instância específica."""
+    return campaign_history.get(instance_name, [])
