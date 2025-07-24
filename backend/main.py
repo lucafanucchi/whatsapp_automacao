@@ -153,33 +153,47 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
 @app.get("/conectar/qr-code/{instance_name}")
 async def get_qr_code(instance_name: str):
     """
-    Busca o QR Code de uma instância específica que já existe e está desconectada.
+    Obtém um QR Code para uma instância existente, desconectando-a primeiro se necessário,
+    e loga a resposta completa da API para depuração.
     """
     async with httpx.AsyncClient() as client:
         try:
-            print(f"Solicitando QR Code para a instância existente '{instance_name}'...")
+            # 1. Verifica o estado atual da instância.
+            status_url = f"{EVOLUTION_API_URL}/instance/connectionState/{instance_name}"
+            status_response = await client.get(status_url, headers=headers, timeout=10.0)
+            instance_state = status_response.json().get("instance", {}).get("state")
+
+            print(f"DEBUG: Estado atual da instância '{instance_name}': {instance_state}")
+
+            # 2. Se a instância estiver conectada ('open'), força o logout primeiro.
+            if instance_state == 'open':
+                print(f"DEBUG: Instância '{instance_name}' está conectada. Forçando logout...")
+                logout_url = f"{EVOLUTION_API_URL}/instance/logout/{instance_name}"
+                await client.delete(logout_url, headers=headers, timeout=30.0)
+                await asyncio.sleep(2) # Aguarda a API processar
+                print(f"DEBUG: Logout da instância '{instance_name}' finalizado.")
+
+            # 3. Agora que a instância está desconectada, pede o QR Code.
+            print(f"DEBUG: Solicitando QR Code para a instância '{instance_name}'...")
             connect_url = f"{EVOLUTION_API_URL}/instance/connect/{instance_name}"
+            connect_response = await client.get(connect_url, headers=headers, timeout=30.0)
             
-            response = await client.get(connect_url, headers=headers, timeout=30.0)
-            response.raise_for_status()
+            connect_response.raise_for_status()
             
-            qr_data = response.json()
-
-            # Valida se o QR Code foi retornado na resposta
+            # --- PONTO CRÍTICO DE DEPURAÇÃO ---
+            qr_data = connect_response.json()
+            print(f"DEBUG: Resposta completa da API para o pedido de QR Code: {qr_data}")
+            # --- FIM DA DEPURAÇÃO ---
+            
             if not qr_data.get("base64"):
-                print(f"A API respondeu com sucesso, mas não retornou um QR Code para '{instance_name}'. Resposta: {qr_data}")
-                raise HTTPException(status_code=500, detail="A API não retornou os dados do QR Code. Verifique se a instância não está em um estado de erro.")
-
-            print(f"QR Code para '{instance_name}' obtido com sucesso.")
+                raise HTTPException(status_code=500, detail="A API não retornou a chave 'base64' com os dados do QR Code.")
+            
             return qr_data
 
-        except httpx.HTTPStatusError as e:
-            error_text = e.response.text
-            print(f"Erro da API Evolution ao solicitar QR Code: {error_text}")
-            raise HTTPException(status_code=500, detail=f"A API da Evolution retornou um erro: {error_text}")
         except Exception as e:
-            print(f"Erro CRÍTICO no processo de obtenção de QR Code: {e}")
+            print(f"ERRO CRÍTICO no processo de obtenção de QR Code: {e}")
             raise HTTPException(status_code=500, detail=f"Erro crítico no backend: {e}")
+
 
 @app.get("/conectar/status/{instance_name}")
 async def get_instance_status(instance_name: str):
