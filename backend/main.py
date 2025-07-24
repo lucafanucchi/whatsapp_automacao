@@ -105,61 +105,21 @@ async def gerar_url_upload(payload: UrlPayload):
 @app.post("/enviar/{instance_name}")
 async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
     """
-    Verifica um número de forma inteligente (lidando com o 9º dígito) 
-    e envia uma mensagem através de uma instância específica da Evolution API.
+    Envia uma mensagem (texto ou mídia) diretamente, sem verificação prévia do número.
     """
-    numero_original = ''.join(filter(str.isdigit, payload.numero))
-    numero_verificado = None
+    # A verificação foi removida, então usamos o número original limpo.
+    numero_para_envio = ''.join(filter(str.isdigit, payload.numero))
 
-    # =========================================================================
-    # --- NOVA LÓGICA DE VERIFICAÇÃO INTELIGENTE ---
-    # =========================================================================
-    try:
-        async with httpx.AsyncClient() as client:
-            # 1. Tenta verificar o número original
-            check_url = f"{EVOLUTION_API_URL}/chat/checkNumberStatus/{instance_name}/{numero_original}"
-            response = await client.get(check_url, headers=headers, timeout=10.0)
-            
-            if response.status_code == 200 and response.json().get("numberExists"):
-                numero_verificado = numero_original
-            else:
-                # 2. Se falhar, e for um celular do Brasil, tenta remover o 9º dígito
-                # Formato: 55 (País) + DD (DDD) + 9 (Nono Dígito) + XXXXXXXX (Número) = 13 dígitos
-                if numero_original.startswith("55") and len(numero_original) == 13 and numero_original[4] == '9':
-                    ddd = numero_original[2:4]
-                    numero_sem_nove = f"55{ddd}{numero_original[5:]}"
-                    
-                    print(f"Verificação inicial falhou. Tentando sem o 9º dígito: {numero_sem_nove}")
-                    
-                    check_url_sem_nove = f"{EVOLUTION_API_URL}/chat/checkNumberStatus/{instance_name}/{numero_sem_nove}"
-                    response_sem_nove = await client.get(check_url_sem_nove, headers=headers, timeout=10.0)
-                    
-                    if response_sem_nove.status_code == 200 and response_sem_nove.json().get("numberExists"):
-                        numero_verificado = numero_sem_nove
-
-            # 3. Se nenhuma verificação funcionou, retorna o erro
-            if not numero_verificado:
-                raise HTTPException(status_code=404, detail=f"Número ({payload.numero}) não encontrado no WhatsApp em nenhuma variação.")
-
-    except HTTPException as e:
-        raise e # Repassa o erro 404
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Erro ao verificar número na Evolution API: {e}")
-    
-    # =========================================================================
-    # --- FIM DA LÓGICA DE VERIFICAÇÃO ---
-    # =========================================================================
-
-    # Prepara a simulação de digitação (sem alterações)
+    # Prepara a simulação de digitação
     try:
         async with httpx.AsyncClient() as client:
             presence_url = f"{EVOLUTION_API_URL}/chat/sendPresence/{instance_name}"
-            await client.post(presence_url, json={"number": numero_verificado, "presence": "composing"}, headers=headers)
+            await client.post(presence_url, json={"number": numero_para_envio, "presence": "composing"}, headers=headers)
             await asyncio.sleep(random.randint(1, 3))
     except Exception:
-        pass
+        pass # Não impede o envio se a simulação de presença falhar
 
-    # Monta e envia a mensagem usando o número verificado (sem alterações)
+    # Monta e envia a mensagem
     anexo_url_final = f"{R2_PUBLIC_URL}/{payload.anexo_key}" if payload.anexo_key else None
     
     endpoint_url = ""
@@ -167,7 +127,7 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
 
     if not anexo_url_final:
         endpoint_url = f"{EVOLUTION_API_URL}/message/sendText/{instance_name}"
-        request_payload = {"number": numero_verificado, "textMessage": {"text": payload.mensagem}}
+        request_payload = {"number": numero_para_envio, "textMessage": {"text": payload.mensagem}}
     else:
         endpoint_url = f"{EVOLUTION_API_URL}/message/sendMedia/{instance_name}"
         media_type = "image"
@@ -177,7 +137,7 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
             media_type = "document"
         
         request_payload = {
-            "number": numero_verificado,
+            "number": numero_para_envio,
             "mediaMessage": {"mediaType": media_type, "url": anexo_url_final, "caption": payload.mensagem, "fileName": payload.original_file_name or "anexo"}
         }
 
@@ -187,6 +147,7 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
         response.raise_for_status()
         return response.json()
     except Exception as e:
+        # Este erro agora só acontecerá se a própria API da Evolution estiver offline ou o envio falhar.
         raise HTTPException(status_code=503, detail=f"Falha ao enviar mensagem pela Evolution API: {e}")
 
 @app.get("/conectar/qr-code/{instance_name}")
