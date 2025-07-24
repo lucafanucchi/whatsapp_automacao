@@ -150,49 +150,60 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
         # Este erro agora só acontecerá se a própria API da Evolution estiver offline ou o envio falhar.
         raise HTTPException(status_code=503, detail=f"Falha ao enviar mensagem pela Evolution API: {e}")
 
+# Em main.py, substitua a função get_qr_code inteira por esta versão final:
+
 @app.get("/conectar/qr-code/{instance_name}")
 async def get_qr_code(instance_name: str):
     """
-    Obtém um QR Code para uma instância existente, desconectando-a primeiro se necessário,
-    e loga a resposta completa da API para depuração.
+    Força a geração de um novo QR Code, deletando e recriando a instância para garantir um estado limpo.
     """
     async with httpx.AsyncClient() as client:
         try:
-            # 1. Verifica o estado atual da instância.
-            status_url = f"{EVOLUTION_API_URL}/instance/connectionState/{instance_name}"
-            status_response = await client.get(status_url, headers=headers, timeout=10.0)
-            instance_state = status_response.json().get("instance", {}).get("state")
+            # 1. Deleta a instância para garantir um estado 100% limpo.
+            print(f"Iniciando processo de reset para a instância '{instance_name}'...")
+            delete_url = f"{EVOLUTION_API_URL}/instance/delete/{instance_name}"
+            await client.delete(delete_url, headers=headers, timeout=15.0)
+            print(f"Comando de exclusão enviado para a instância '{instance_name}'.")
 
-            print(f"DEBUG: Estado atual da instância '{instance_name}': {instance_state}")
-
-            # 2. Se a instância estiver conectada ('open'), força o logout primeiro.
-            if instance_state == 'open':
-                print(f"DEBUG: Instância '{instance_name}' está conectada. Forçando logout...")
-                logout_url = f"{EVOLUTION_API_URL}/instance/logout/{instance_name}"
-                await client.delete(logout_url, headers=headers, timeout=30.0)
-                await asyncio.sleep(2) # Aguarda a API processar
-                print(f"DEBUG: Logout da instância '{instance_name}' finalizado.")
-
-            # 3. Agora que a instância está desconectada, pede o QR Code.
-            print(f"DEBUG: Solicitando QR Code para a instância '{instance_name}'...")
-            connect_url = f"{EVOLUTION_API_URL}/instance/connect/{instance_name}"
-            connect_response = await client.get(connect_url, headers=headers, timeout=30.0)
-            
-            connect_response.raise_for_status()
-            
-            # --- PONTO CRÍTICO DE DEPURAÇÃO ---
-            qr_data = connect_response.json()
-            print(f"DEBUG: Resposta completa da API para o pedido de QR Code: {qr_data}")
-            # --- FIM DA DEPURAÇÃO ---
-            
-            if not qr_data.get("base64"):
-                raise HTTPException(status_code=500, detail="A API não retornou a chave 'base64' com os dados do QR Code.")
-            
-            return qr_data
+            # Aguarda um momento crucial para a API processar a exclusão.
+            await asyncio.sleep(3)
 
         except Exception as e:
-            print(f"ERRO CRÍTICO no processo de obtenção de QR Code: {e}")
-            raise HTTPException(status_code=500, detail=f"Erro crítico no backend: {e}")
+            # A falha na exclusão não é crítica, pode ser que a instância não existisse.
+            print(f"Aviso: não foi possível deletar a instância '{instance_name}' (pode não existir). Continuando...")
+
+        try:
+            # 2. Cria a instância novamente com o payload completo.
+            print(f"Recriando a instância '{instance_name}' e solicitando QR Code...")
+            create_url = f"{EVOLUTION_API_URL}/instance/create"
+            payload = {
+                "instanceName": instance_name,
+                "qrcode": True,
+                "integration": "WHATSAPP-BAILEYS",
+                "settings": {
+                    "always_online": True
+                }
+            }
+
+            response = await client.post(create_url, headers=headers, json=payload, timeout=30.0)
+            response.raise_for_status()
+            
+            instance_data = response.json()
+            qr_code_base64 = instance_data.get("instance", {}).get("qrcode", {}).get("base64")
+
+            if not qr_code_base64:
+                 raise HTTPException(status_code=500, detail="API criou a instância mas não retornou o QR Code.")
+
+            print(f"QR Code para '{instance_name}' gerado com sucesso.")
+            return {"base64": qr_code_base64}
+
+        except httpx.HTTPStatusError as e:
+             error_text = e.response.text
+             print(f"Erro da API Evolution ao recriar: {error_text}")
+             raise HTTPException(status_code=500, detail=f"A API da Evolution retornou um erro: {error_text}")
+        except Exception as e:
+            print(f"Erro CRÍTICO ao recriar instância com QR Code: {e}")
+            raise HTTPException(status_code=500, detail=f"Erro ao gerar QR Code: {e}")
 
 
 @app.get("/conectar/status/{instance_name}")
