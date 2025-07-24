@@ -105,54 +105,30 @@ async def gerar_url_upload(payload: UrlPayload):
 @app.post("/enviar/{instance_name}")
 async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
     """
-    Busca os detalhes da instância para confirmar que ela existe antes de enviar a mensagem.
+    Envia uma mensagem (texto ou mídia) com o payload formatado corretamente para a Evolution API v2.
     """
     numero_para_envio = ''.join(filter(str.isdigit, payload.numero))
     
-    # --- NOVO: Bloco de verificação de existência da instância ---
-    try:
-        async with httpx.AsyncClient() as client:
-            print(f"DEBUG: Buscando detalhes da instância '{instance_name}'...")
-            fetch_url = f"{EVOLUTION_API_URL}/instance/fetchInstances"
-            fetch_response = await client.get(fetch_url, headers=headers, timeout=10.0)
-            fetch_response.raise_for_status()
-            
-            instances = fetch_response.json()
-            found_instance = next((inst for inst in instances if inst.get("instance", {}).get("instanceName") == instance_name), None)
-
-            if not found_instance:
-                print(f"ERRO: Instância '{instance_name}' não encontrada na API.")
-                raise HTTPException(status_code=404, detail=f"Instância '{instance_name}' não foi encontrada na Evolution API.")
-            
-            print(f"DEBUG: Instância '{instance_name}' encontrada com sucesso.")
-
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        print(f"ERRO ao buscar instâncias: {e}")
-        raise HTTPException(status_code=503, detail=f"Não foi possível verificar a existência da instância na Evolution API: {e}")
-    # --- FIM do bloco de verificação ---
-
-    # O resto do código continua o mesmo, pois a lógica de montar a mensagem está correta.
-    # Prepara a simulação de digitação
-    try:
-        async with httpx.AsyncClient() as client:
-            presence_url = f"{EVOLUTION_API_URL}/chat/sendPresence/{instance_name}"
-            await client.post(presence_url, json={"number": numero_para_envio, "presence": "composing"}, headers=headers)
-            await asyncio.sleep(random.randint(1, 3))
-    except Exception:
-        pass
-
-    # Monta e envia a mensagem
-    anexo_url_final = f"{R2_PUBLIC_URL}/{payload.anexo_key}" if payload.anexo_key else None
+    # --- AJUSTE FINAL: Montagem do Payload Correto ---
     
     endpoint_url = ""
     request_payload = {}
+    delay_aleatorio_ms = random.randint(1000, 2500) # Delay de 1 a 2.5 segundos
+
+    anexo_url_final = f"{R2_PUBLIC_URL}/{payload.anexo_key}" if payload.anexo_key else None
 
     if not anexo_url_final:
+        # Payload para mensagens de TEXTO
         endpoint_url = f"{EVOLUTION_API_URL}/message/sendText/{instance_name}"
-        request_payload = {"number": numero_para_envio, "textMessage": {"text": payload.mensagem}}
+        request_payload = {
+            "number": numero_para_envio,
+            "text": payload.mensagem, # A propriedade é 'text', não um objeto 'textMessage'
+            "options": {
+                "delay": delay_aleatorio_ms
+            }
+        }
     else:
+        # Payload para mensagens de MÍDIA
         endpoint_url = f"{EVOLUTION_API_URL}/message/sendMedia/{instance_name}"
         media_type = "image"
         if payload.mime_type and payload.mime_type.startswith('video'):
@@ -162,12 +138,31 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
         
         request_payload = {
             "number": numero_para_envio,
-            "mediaMessage": {"mediaType": media_type, "url": anexo_url_final, "caption": payload.mensagem, "fileName": payload.original_file_name or "anexo"}
+            "media": {
+                "url": anexo_url_final,
+                "mediaType": media_type,
+                "caption": payload.mensagem,
+                "fileName": payload.original_file_name or "anexo"
+            },
+            "options": {
+                "delay": delay_aleatorio_ms
+            }
         }
+    # --- FIM DO AJUSTE ---
 
+    # A parte de envio continua a mesma, pois a falha estava na montagem do payload
     try:
+        # Adiciona a simulação de "digitando" que já tínhamos
         async with httpx.AsyncClient() as client:
+            presence_url = f"{EVOLUTION_API_URL}/chat/sendPresence/{instance_name}"
+            await client.post(presence_url, json={"number": numero_para_envio, "presence": "composing"}, headers=headers)
+            await asyncio.sleep(random.randint(1, 2))
+
+        # Envia a mensagem com o payload correto
+        async with httpx.AsyncClient() as client:
+            print(f"DEBUG: Enviando para {endpoint_url} com payload: {request_payload}")
             response = await client.post(endpoint_url, json=request_payload, headers=headers, timeout=30.0)
+        
         response.raise_for_status()
         return response.json()
     except Exception as e:
