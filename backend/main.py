@@ -76,6 +76,7 @@ class CampaignLog(BaseModel):
     totalContacts: int
     sentCount: int
     failedCount: int
+    lastContactProcessed: Optional[str] = None # Novo campo para o log em tempo real
 
 class CampanhaPayload(BaseModel):
     contatos: list[Contato]
@@ -101,14 +102,6 @@ app.add_middleware(
 )
 
 campaign_history = {}
-
-class CampaignLog(BaseModel):
-    id: str
-    startTime: str
-    status: str
-    totalContacts: int
-    sentCount: int
-    failedCount: int
 
 # Headers de autenticação para a Evolution API
 headers = {
@@ -288,6 +281,18 @@ async def logout_instance(instance_name: str):
             return {"success": True, "message": f"Instância {instance_name} desconectada com sucesso."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao desconectar instância: {e}")
+    
+
+# --- NOVO ENDPOINT PARA STATUS EM TEMPO REAL ---
+@app.get("/campanhas/status/{campaign_id}")
+async def get_campaign_status(campaign_id: str):
+    """Busca o status atual de uma campanha específica pelo seu ID."""
+    for instance_campaigns in campaign_history.values():
+        for campaign in instance_campaigns:
+            if campaign.id == campaign_id:
+                return campaign
+    raise HTTPException(status_code=404, detail="Campanha não encontrada.")
+
     
 # --- NOVO ENDPOINT PARA CONSULTAR O HISTÓRICO ---
 @app.get("/campanhas/{instance_name}", response_model=list[CampaignLog])

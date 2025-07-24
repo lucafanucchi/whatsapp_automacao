@@ -39,7 +39,7 @@ let statusPollingInterval = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     if (!INSTANCE_NAME) {
-        document.body.innerHTML = '<h1 style="font-family: sans-serif; text-align: center; margin-top: 50px; color: red;">Erro: O nome da instância não foi fornecido na URL. Exemplo: /index.html?instancia=nome_do_seu_cliente</h1>';
+        document.body.innerHTML = '<h1 style="font-family: sans-serif; text-align: center; margin-top: 50px; color: red;">Solicite a sua instância Whatsapp para a Digital Six para utilizar nosso serviço</h1>';
         throw new Error("Instância não definida na URL.");
     }
     verificarStatusInicial();
@@ -199,34 +199,66 @@ form.addEventListener('submit', async function (event) {
     // Envia a campanha INTEIRA para o backend em uma única chamada
     adicionarLog('Enviando campanha para o servidor para processamento em segundo plano...');
     try {
+        // 1. Inicia a campanha no backend e pega o ID
+        adicionarLog('Iniciando campanha no servidor...');
         const response = await fetch(`${BACKEND_URL}/campanhas/enviar/${INSTANCE_NAME}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(campanhaPayload),
         });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || 'Erro desconhecido do servidor.');
-        }
-
-        const result = await response.json();
-        adicionarLog(`Servidor aceitou a campanha (ID: ${result.campaign_id}). O envio está ocorrendo.`, 'success');
-        adicionarLog('Você pode atualizar o histórico de atividades para ver o progresso.', 'info-small');
+        if (!response.ok) throw new Error('Falha ao iniciar campanha no backend.');
         
-        // Limpa os campos para a próxima campanha
-        mensagemTextarea.value = '';
-        numerosTextarea.value = '';
-        anexoInput.value = '';
-        localStorage.removeItem('listaNumerosSalva');
+        const result = await response.json();
+        const campaignId = result.campaign_id;
+        adicionarLog(`Campanha iniciada com ID: ${campaignId}. Acompanhando envios...`, 'success');
+
+        // 2. Inicia o polling para acompanhar o progresso
+        acompanharProgressoCampanha(campaignId, contatos.length);
 
     } catch (error) {
-        adicionarLog(`Falha ao iniciar a campanha: ${error.message}`, 'error');
-    } finally {
+        adicionarLog(`Erro: ${error.message}`, 'error');
         enviarBtn.disabled = false;
         enviarBtn.textContent = 'Enviar Campanha';
     }
 });
+
+// --- NOVA FUNÇÃO DE ACOMPANHAMENTO ---
+function acompanharProgressoCampanha(campaignId, totalContatos) {
+    let processadosAnteriormente = 0;
+
+    const pollingInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`${BACKEND_URL}/campanhas/status/${campaignId}`);
+            const status = await response.json();
+
+            // Calcula quantos novos contatos foram processados desde a última verificação
+            const processadosAtualmente = status.sentCount + status.failedCount;
+            if (processadosAtualmente > processadosAnteriormente) {
+                adicionarLog(`(${processadosAtualmente}/${totalContatos}) Enviado para ${status.lastContactProcessed}...`, 'success');
+            }
+            processadosAnteriormente = processadosAtualmente;
+
+            // Se a campanha terminou, para o polling
+            if (status.status.startsWith("Finalizada")) {
+                clearInterval(pollingInterval);
+                adicionarLog('Campanha finalizada!');
+                enviarBtn.disabled = false;
+                enviarBtn.textContent = 'Enviar Campanha';
+                // Limpa os campos após o sucesso
+                mensagemTextarea.value = '';
+                numerosTextarea.value = '';
+                anexoInput.value = '';
+                localStorage.removeItem('listaNumerosSalva');
+                // Atualiza a tabela de histórico geral
+                carregarHistoricoDeCampanhas();
+            }
+
+        } catch (error) {
+            console.error("Erro no polling:", error);
+            // Opcional: Adicionar uma mensagem de erro no log se o acompanhamento falhar
+        }
+    }, 3000); // Verifica o status a cada 3 segundos
+}
 
 async function enviarMensagemParaBackend(numero, mensagem, anexoKey = null, mimeType = null, originalFileName = null) {
     // A chamada agora inclui o INSTANCE_NAME na URL
