@@ -152,69 +152,80 @@ form.addEventListener('submit', async function (event) {
     event.preventDefault();
     let mensagem = mensagemTextarea.value.trim();
     const numerosTextoCompleto = numerosTextarea.value.trim();
+    
+    // Processa a lista de contatos como antes
     const contatos = numerosTextoCompleto.split('\n').filter(line => line.trim() !== '').map(line => {
         const parts = line.split(',');
-        return { numero: parts[0] ? parts[0].trim() : '', nome: parts[1] ? parts[1].trim() : '' };
+        return {
+            numero: parts[0] ? parts[0].trim() : '',
+            nome: parts[1] ? parts[1].trim() : ''
+        };
     });
 
     const anexoArquivo = anexoInput.files[0];
+
     if ((!mensagem && !anexoArquivo) || contatos.length === 0) {
         adicionarLog('É necessário ter uma mensagem ou um anexo, e uma lista de contatos.', 'error');
         return;
     }
 
-    if (numerosTextoCompleto) {
-        localStorage.setItem('listaNumerosSalva', numerosTextoCompleto);
-    }
-
     enviarBtn.disabled = true;
     enviarBtn.textContent = 'Enviando...';
-    feedbackDiv.innerHTML = '';
-
+    feedbackDiv.innerHTML = ''; // Limpa o log antigo
+    
     let anexoKey = null;
     if (anexoArquivo) {
-        adicionarLog('Preparando upload do arquivo...');
+        adicionarLog('Fazendo upload do anexo...');
         try {
             anexoKey = await uploadAnexoParaR2(anexoArquivo);
-            adicionarLog(`Upload concluído!`, 'success');
+            adicionarLog('Upload concluído com sucesso!', 'success');
         } catch (error) {
-            adicionarLog(`Falha no upload do arquivo: ${error.message}`, 'error');
+            adicionarLog(`Falha no upload: ${error.message}`, 'error');
             enviarBtn.disabled = false;
             enviarBtn.textContent = 'Enviar Campanha';
             return;
         }
     }
 
-    adicionarLog(`Iniciando campanha para ${contatos.length} contato(s).`);
+    // Monta o payload completo da campanha
+    const campanhaPayload = {
+        contatos: contatos,
+        mensagem: mensagem,
+        anexo_key: anexoKey,
+        mime_type: anexoArquivo ? anexoArquivo.type : null,
+        original_file_name: anexoArquivo ? anexoArquivo.name : null
+    };
 
-    let contadorEnvios = 0;
-    for (const contato of contatos) {
-        contadorEnvios++;
-        adicionarLog(`(${contadorEnvios}/${contatos.length}) Preparando para ${contato.nome || contato.numero}...`);
-        let mensagemPersonalizada = mensagem.replace(/\{nome\}/gi, contato.nome || '').trim();
+    // Envia a campanha INTEIRA para o backend em uma única chamada
+    adicionarLog('Enviando campanha para o servidor para processamento em segundo plano...');
+    try {
+        const response = await fetch(`${BACKEND_URL}/campanhas/enviar/${INSTANCE_NAME}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(campanhaPayload),
+        });
 
-        try {
-            await enviarMensagemParaBackend(contato.numero, mensagemPersonalizada, anexoKey, anexoArquivo ? anexoArquivo.type : null, anexoArquivo ? anexoArquivo.name : null);
-            adicionarLog(`--> Sucesso: Pedido para ${contato.nome || contato.numero} foi aceito.`, 'success');
-        } catch (error) {
-            adicionarLog(`--> Falha ao enviar para ${contato.nome || contato.numero}. Detalhes: ${error.message}`, 'error');
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Erro desconhecido do servidor.');
         }
 
-        if (contadorEnvios < contatos.length) {
-            const delay = (contadorEnvios % 10 === 0) 
-                ? Math.floor(Math.random() * (180000 - 60000 + 1)) + 60000 
-                : Math.floor(Math.random() * (28000 - 15000 + 1)) + 15000;
-            
-            const delayEmSegundos = (delay / 1000).toFixed(1);
-            const tipoLog = (delay > 50000) ? 'info' : 'info-small';
-            adicionarLog(`Aguardando ${delayEmSegundos} segundos...`, tipoLog);
-            await new Promise(resolve => setTimeout(resolve, delay));
-        }
+        const result = await response.json();
+        adicionarLog(`Servidor aceitou a campanha (ID: ${result.campaign_id}). O envio está ocorrendo.`, 'success');
+        adicionarLog('Você pode atualizar o histórico de atividades para ver o progresso.', 'info-small');
+        
+        // Limpa os campos para a próxima campanha
+        mensagemTextarea.value = '';
+        numerosTextarea.value = '';
+        anexoInput.value = '';
+        localStorage.removeItem('listaNumerosSalva');
+
+    } catch (error) {
+        adicionarLog(`Falha ao iniciar a campanha: ${error.message}`, 'error');
+    } finally {
+        enviarBtn.disabled = false;
+        enviarBtn.textContent = 'Enviar Campanha';
     }
-
-    adicionarLog('Campanha finalizada!');
-    enviarBtn.disabled = false;
-    enviarBtn.textContent = 'Enviar Campanha';
 });
 
 async function enviarMensagemParaBackend(numero, mensagem, anexoKey = null, mimeType = null, originalFileName = null) {

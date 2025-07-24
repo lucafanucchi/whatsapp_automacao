@@ -63,6 +63,27 @@ class MensagemPayload(BaseModel):
     mime_type: Optional[str] = None
     original_file_name: Optional[str] = None
 
+# --- Novos Modelos Pydantic ---
+class Contato(BaseModel):
+    numero: str
+    nome: Optional[str] = None
+
+class CampaignLog(BaseModel):
+    id: str
+    startTime: str
+    endTime: Optional[str] = None
+    status: str
+    totalContacts: int
+    sentCount: int
+    failedCount: int
+
+class CampanhaPayload(BaseModel):
+    contatos: list[Contato]
+    mensagem: str
+    anexo_key: Optional[str] = None
+    mime_type: Optional[str] = None
+    original_file_name: Optional[str] = None
+
 # Aplicação FastAPI
 app = FastAPI(
     title="API de Automação de WhatsApp com Evolution",
@@ -98,6 +119,60 @@ headers = {
 # --- ENDPOINTS DA APLICAÇÃO ---
 # =================================================================================
 
+async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload, log_entry: CampaignLog):
+    """Função que roda em segundo plano para enviar as mensagens da campanha uma a uma."""
+    for contato in payload.contatos:
+        try:
+            numero_para_envio = ''.join(filter(str.isdigit, contato.numero))
+            mensagem_personalizada = payload.mensagem.replace('{nome}', contato.nome or '').strip()
+            
+            anexo_url_final = f"{R2_PUBLIC_URL}/{payload.anexo_key}" if payload.anexo_key else None
+            
+            endpoint_url = ""
+            request_payload = {}
+
+            if not anexo_url_final:
+                endpoint_url = f"{EVOLUTION_API_URL}/message/sendText/{instance_name}"
+                request_payload = {
+                    "number": numero_para_envio,
+                    "textMessage": {"text": mensagem_personalizada},
+                    "options": {"delay": 1200, "presence": "composing"}
+                }
+            else:
+                endpoint_url = f"{EVOLUTION_API_URL}/message/sendMedia/{instance_name}"
+                media_type = "image"
+                if payload.mime_type and payload.mime_type.startswith('video'):
+                    media_type = "video"
+                elif payload.mime_type and payload.mime_type == 'application/pdf':
+                    media_type = "document"
+                request_payload = {
+                    "number": numero_para_envio,
+                    "options": {"delay": 1200, "presence": "composing"},
+                    "mediatype": media_type,
+                    "caption": mensagem_personalizada,
+                    "media": anexo_url_final,
+                    "fileName": payload.original_file_name or "anexo"
+                }
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(endpoint_url, json=request_payload, headers=headers, timeout=60.0)
+                response.raise_for_status()
+            
+            log_entry.sentCount += 1
+        except Exception as e:
+            print(f"Erro ao enviar para {contato.numero}: {e}")
+            log_entry.failedCount += 1
+        
+        utc_now = datetime.now(timezone.utc)
+        br_tz = timezone(timedelta(hours=-3))
+        log_entry.endTime = utc_now.astimezone(br_tz).strftime("%Y-%m-%d %H:%M:%S")
+
+        # Pausa com intervalo humano
+        await asyncio.sleep(random.randint(15, 28))
+
+    log_entry.status = "Finalizada" if log_entry.failedCount == 0 else "Finalizada com erros"
+    print(f"Campanha {log_entry.id} finalizada.")
+
 @app.get("/")
 def ler_raiz():
     return {"status": "Backend da Automação de WhatsApp (com Evolution API) está no ar!"}
@@ -120,104 +195,30 @@ async def gerar_url_upload(payload: UrlPayload):
 
 # Em main.py, substitua a função de envio inteira por esta versão final e correta:
 
-@app.post("/enviar/{instance_name}")
-async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
-    """
-    Envia uma mensagem (texto ou mídia) com o payload formatado corretamente para a Evolution API v2.
-    """
-    numero_para_envio = ''.join(filter(str.isdigit, payload.numero))
-
-    # --- LÓGICA DE RASTREAMENTO INSERIDA AQUI ---
+@app.post("/campanhas/enviar/{instance_name}")
+async def enviar_campanha(instance_name: str, payload: CampanhaPayload):
+    """Recebe uma campanha completa, a registra e inicia o envio em segundo plano."""
     if instance_name not in campaign_history:
         campaign_history[instance_name] = []
 
     campaign_id = str(uuid.uuid4())
-
     utc_now = datetime.now(timezone.utc)
     br_tz = timezone(timedelta(hours=-3))
-    br_now = utc_now.astimezone(br_tz)
-    start_time_br = br_now.strftime("%Y-%m-%d %H:%M:%S")
-    log_entry = {
-        "id": campaign_id,
-        "startTime": start_time_br,
-        "status": "Iniciada",
-        "totalContacts": 0, # Será atualizado depois
-        "sentCount": 0,
-        "failedCount": 0
-    }
+    start_time_br = utc_now.astimezone(br_tz).strftime("%Y-%m-%d %H:%M:%S")
 
-    # Adicionamos no início da lista para aparecer primeiro no frontend
+    log_entry = CampaignLog(
+        id=campaign_id,
+        startTime=start_time_br,
+        status="Em andamento",
+        totalContacts=len(payload.contatos),
+        sentCount=0,
+        failedCount=0
+    )
     campaign_history[instance_name].insert(0, log_entry)
-    
-    endpoint_url = ""
-    request_payload = {}
 
-    anexo_url_final = f"{R2_PUBLIC_URL}/{payload.anexo_key}" if payload.anexo_key else None
+    asyncio.create_task(processar_envios_campanha(instance_name, payload, log_entry))
 
-    if not anexo_url_final:
-        # Payload para mensagens de TEXTO (que já estava correto)
-        endpoint_url = f"{EVOLUTION_API_URL}/message/sendText/{instance_name}"
-        request_payload = {
-            "number": numero_para_envio,
-            "textMessage": {
-                "text": payload.mensagem
-            },
-            "options": {
-                "delay": 1200,
-                "presence": "composing"
-            }
-        }
-    else:
-        # --- CORREÇÃO FINAL E DEFINITIVA: Payload para MÍDIA com estrutura "plana" ---
-        endpoint_url = f"{EVOLUTION_API_URL}/message/sendMedia/{instance_name}"
-        
-        media_type = "image"
-        if payload.mime_type and payload.mime_type.startswith('video'):
-            media_type = "video"
-        elif payload.mime_type and payload.mime_type == 'application/pdf':
-            media_type = "document"
-        
-        request_payload = {
-            "number": numero_para_envio,
-            "options": {
-                "delay": 1200,
-                "presence": "composing"
-            },
-            # Todas as propriedades da mídia estão agora no nível principal, como a API espera.
-            "mediatype": media_type,
-            "caption": payload.mensagem,
-            "media": anexo_url_final,
-            "fileName": payload.original_file_name or "anexo"
-        }
-        # --- FIM DA CORREÇÃO ---
-
-    try:
-        async with httpx.AsyncClient() as client:
-            print(f"DEBUG: Enviando para {endpoint_url} com payload: {request_payload}")
-            # Aumentado o timeout para dar tempo de a API baixar e processar a mídia
-            response = await client.post(endpoint_url, json=request_payload, headers=headers, timeout=60.0) 
-        
-        response.raise_for_status()
-        # ATUALIZA O LOG COM SUCESSO
-        log_entry["sentCount"] += 1
-        return response.json()
-    except httpx.HTTPStatusError as e:
-        print(f"ERRO da Evolution API: {e.response.status_code} - {e.response.text}")
-        raise HTTPException(status_code=503, detail=f"A Evolution API retornou um erro: {e.response.text}")
-    
-    
-    except Exception as e:
-        # ATUALIZA O LOG COM FALHA
-        log_entry["failedCount"] += 1
-        raise HTTPException(status_code=503, detail=f"Falha ao enviar mensagem pela Evolution API: {e}")
-    finally:
-        # ATUALIZA O STATUS E TOTAL AO FINAL DE CADA ENVIO INDIVIDUAL
-        # (Em um sistema real, você faria isso após o loop no frontend)
-        log_entry["totalContacts"] += 1 
-        if log_entry["failedCount"] > 0:
-            log_entry["status"] = "Finalizada com erros"
-        else:
-            log_entry["status"] = "Finalizada"
+    return {"status": "Campanha recebida e iniciada com sucesso.", "campaign_id": campaign_id}
 
 
 # Em main.py, substitua a função get_qr_code inteira por esta versão final:
