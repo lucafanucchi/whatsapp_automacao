@@ -62,20 +62,10 @@ document.addEventListener('DOMContentLoaded', () => {
 // =============================================================================
 
 async function verificarStatusInicial() {
-    try {
-        adicionarLog('Verificando status da conexão...', 'info-small');
-        const response = await fetch(`${BACKEND_URL}/conectar/status/${INSTANCE_NAME}`);
-        const data = await response.json();
-        if (data.status === 'open') {
-            mostrarTelaPrincipal();
-        } else {
-            mostrarTelaDeConexao();
-            iniciarProcessoDeConexao();
-        }
-    } catch (error) {
-        statusConexaoDiv.innerHTML = '<span style="color: red;">Falha ao conectar ao servidor do backend.</span>';
-        mostrarTelaDeConexao();
-    }
+    // Com a nova lógica, sempre mostramos a tela de conexão
+    // e pedimos um novo QR Code para garantir um estado limpo.
+    mostrarTelaDeConexao();
+    iniciarProcessoDeConexao(); 
 }
 
 async function iniciarProcessoDeConexao() {

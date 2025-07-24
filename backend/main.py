@@ -152,18 +152,49 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
 
 @app.get("/conectar/qr-code/{instance_name}")
 async def get_qr_code(instance_name: str):
-    """Busca o QR Code de uma instância para ser exibido no frontend."""
-    try:
-        async with httpx.AsyncClient() as client:
-            connect_url = f"{EVOLUTION_API_URL}/instance/connect/{instance_name}"
-            response = await client.get(connect_url, headers=headers, timeout=30.0)
-            response.raise_for_status()
-            return response.json()
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=e.response.status_code, detail=e.response.json())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao gerar QR Code: {e}")
+    """
+    Força a geração de um novo QR Code. 
+    Primeiro, deleta qualquer instância existente para limpar o estado.
+    Depois, recria a instância solicitando o QR Code na criação.
+    """
+    async with httpx.AsyncClient() as client:
+        try:
+            # 1. Tenta deletar a instância para garantir um estado limpo.
+            # Ignoramos o erro se a instância não existir.
+            delete_url = f"{EVOLUTION_API_URL}/instance/delete/{instance_name}"
+            await client.delete(delete_url, headers=headers, timeout=10.0)
+            print(f"Tentativa de limpeza da instância '{instance_name}' finalizada.")
 
+        except Exception as e:
+            # A falha na exclusão não é crítica, podemos continuar.
+            print(f"Aviso: não foi possível deletar a instância '{instance_name}' (pode não existir): {e}")
+
+        try:
+            # 2. Cria a instância novamente, forçando a geração do QR Code.
+            create_url = f"{EVOLUTION_API_URL}/instance/create"
+            payload = {
+                "instanceName": instance_name,
+                "qrcode": True # Parâmetro chave para forçar o QR Code na criação
+            }
+            response = await client.post(create_url, headers=headers, json=payload, timeout=30.0)
+            
+            response.raise_for_status()
+            
+            # A resposta da criação com qrcode=True contém os dados da instância e o QR code
+            instance_data = response.json()
+            qr_code_data = {
+                "base64": instance_data.get("instance", {}).get("qrcode", {}).get("base64"),
+                "code": instance_data.get("instance", {}).get("qrcode", {}).get("code")
+            }
+
+            if not qr_code_data["base64"]:
+                 raise HTTPException(status_code=500, detail="API criou a instância mas não retornou o QR Code.")
+
+            return qr_code_data
+
+        except Exception as e:
+            print(f"Erro CRÍTICO ao recriar instância com QR Code: {e}")
+            raise HTTPException(status_code=500, detail=f"Erro ao gerar QR Code: {e}")
 @app.get("/conectar/status/{instance_name}")
 async def get_instance_status(instance_name: str):
     """Verifica o status da conexão de uma instância."""
