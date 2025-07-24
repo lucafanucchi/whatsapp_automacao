@@ -79,9 +79,6 @@ async function verificarStatusInicial() {
 }
 
 async function iniciarProcessoDeConexao() {
-    // A biblioteca QRCode.js precisa ser importada no seu index.html
-    // <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
-
     try {
         const response = await fetch(`${BACKEND_URL}/conectar/qr-code/${INSTANCE_NAME}`);
         if (!response.ok) {
@@ -91,17 +88,18 @@ async function iniciarProcessoDeConexao() {
         const data = await response.json();
         
         // --- AJUSTE FINAL E DEFINITIVO ---
-        // Agora procuramos pela chave "pairingCode" que a API V1 nos envia.
-        if (data && data.pairingCode) {
-            // SUCESSO: A API retornou o código de pareamento.
-            qrCodeWrapper.innerHTML = '';
+        // Agora procuramos pela chave "base64" que a API V1 nos envia.
+        if (data && data.base64) {
+            // SUCESSO: A API retornou a imagem do QR Code pronta.
+            qrCodeWrapper.innerHTML = ''; // Limpa a área
             
-            // Usamos o valor de "pairingCode" para gerar o QR Code.
-            new QRCode(qrCodeWrapper, {
-                text: data.pairingCode,
-                width: 250,
-                height: 250,
-            });
+            // Cria uma tag de imagem e coloca o conteúdo base64 diretamente nela.
+            const qrImage = document.createElement('img');
+            qrImage.src = data.base64;
+            qrImage.alt = "QR Code do WhatsApp";
+            qrImage.style.width = "250px";
+            qrImage.style.height = "250px";
+            qrCodeWrapper.appendChild(qrImage);
 
             statusConexaoDiv.textContent = 'QR Code pronto! Escaneie com seu celular.';
             comecarPollingDeStatus(); // Começa a verificar se o usuário escaneou
@@ -109,9 +107,9 @@ async function iniciarProcessoDeConexao() {
         } else if (data && data.status === 'connecting') {
             // PACIÊNCIA: A API está conectando. Vamos tentar de novo.
             statusConexaoDiv.textContent = 'Inicializando conexão... Gerando QR Code em breve.';
-            setTimeout(iniciarProcessoDeconectar, 3000); // Tenta novamente em 3 segundos
+            setTimeout(iniciarProcessoDeConexao, 3000); // Tenta novamente em 3 segundos
         } else {
-            // ERRO: A API não retornou nem "pairingCode" nem "connecting".
+            // ERRO: A API não retornou nem "base64" nem "connecting".
             throw new Error('A API retornou uma resposta inesperada.');
         }
         // --- FIM DO AJUSTE ---
