@@ -127,13 +127,12 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
                 endpoint_url = f"{EVOLUTION_API_URL}/message/sendText/{instance_name}"
                 request_payload = {
                     "number": numero_para_envio,
-                    "textMessage": {
-                        "text": mensagem_personalizada
-                    },
                     "options": {
                         "delay": 1200,
                         "presence": "composing"
-                    }
+                    },
+
+                    "text": mensagem_personalizada
                 }
             else:
                 endpoint_url = f"{EVOLUTION_API_URL}/message/sendMedia/{instance_name}"
