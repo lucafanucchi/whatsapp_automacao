@@ -169,6 +169,10 @@ form.addEventListener('submit', async function (event) {
         return;
     }
 
+    if (numerosTextoCompleto) {
+        localStorage.setItem('listaNumerosSalva', numerosTextoCompleto);
+    }
+
     enviarBtn.disabled = true;
     enviarBtn.textContent = 'Enviando...';
     feedbackDiv.innerHTML = ''; // Limpa o log antigo
