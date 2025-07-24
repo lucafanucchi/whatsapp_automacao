@@ -245,11 +245,7 @@ function acompanharProgressoCampanha(campaignId, totalContatos) {
                 enviarBtn.disabled = false;
                 enviarBtn.textContent = 'Enviar Campanha';
                 // Limpa os campos após o sucesso
-                mensagemTextarea.value = '';
-                numerosTextarea.value = '';
                 anexoInput.value = '';
-                localStorage.removeItem('listaNumerosSalva');
-                // Atualiza a tabela de histórico geral
                 carregarHistoricoDeCampanhas();
             }
 
