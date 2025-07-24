@@ -3,18 +3,11 @@
 // =============================================================================
 
 // ATENÇÃO: Coloque aqui a URL do seu backend implantado no Render ou em outro serviço.
-const BACKEND_URL = "https://whatsapp-backend-km3f.onrender.com"; // Exemplo local. Troque pela sua URL de produção.
+const BACKEND_URL = "https://whatsapp-backend-km3f.onrender.com";
 
-// ATENÇÃO: Coloque aqui o nome EXATO da instância que você criou no Evolution Manager.
-// --- NOVO: LÓGICA PARA TORNAR A INSTÂNCIA DINÂMICA ---
+// Lógica para tornar a instância dinâmica, lendo da URL
 const urlParams = new URLSearchParams(window.location.search);
 const INSTANCE_NAME = urlParams.get('instancia');
-
-if (!INSTANCE_NAME) {
-    document.body.innerHTML = '<h1 style="font-family: sans-serif; text-align: center; margin-top: 50px; color: red;">Erro: O nome da instância não foi fornecido na URL. Exemplo: /index.html?instancia=nome_do_seu_cliente</h1>';
-    // Trava a execução se não houver instância.
-    throw new Error("Instância não definida na URL.");
-}
 
 // =============================================================================
 // --- SELEÇÃO DE ELEMENTOS DO DOM ---
@@ -25,7 +18,8 @@ const telaConexao = document.getElementById('tela-conexao');
 const telaPrincipal = document.getElementById('tela-principal');
 
 // Elementos da Tela de Conexão
-const qrCodeWrapper = document.getElementById('qrcode-wrapper');
+// A V1 não tem um /manager, então a lógica de QR code volta para cá
+const qrCodeWrapper = document.getElementById('qrcode-wrapper') || document.getElementById('qrcode-container'); 
 const statusConexaoDiv = document.getElementById('status-conexao');
 const stuckContainer = document.getElementById('stuck-container');
 const forceRefreshBtn = document.getElementById('force-refresh-btn');
@@ -53,30 +47,32 @@ const previewVideo = document.getElementById('preview-video');
 
 let statusPollingInterval = null;
 
-// Ao carregar a página, verifica o status da conexão para decidir qual tela mostrar.
-document.addEventListener('DOMContentLoaded', verificarStatusInicial);
+document.addEventListener('DOMContentLoaded', () => {
+    // Validação para garantir que a instância foi passada na URL
+    if (!INSTANCE_NAME) {
+        document.body.innerHTML = '<h1 style="font-family: sans-serif; text-align: center; margin-top: 50px; color: red;">Erro: O nome da instância não foi fornecido na URL. Exemplo: /index.html?instancia=nome_do_seu_cliente</h1>';
+        throw new Error("Instância não definida na URL.");
+    }
+    verificarStatusInicial();
+});
 
 
 // =============================================================================
-// --- LÓGICA DE CONEXÃO E QR CODE ---
+// --- NOVA LÓGICA DE CONEXÃO E QR CODE (ADAPTADA) ---
 // =============================================================================
 
 async function verificarStatusInicial() {
     try {
-        adicionarLog('Verificando status da conexão com o servidor...', 'info-small');
+        adicionarLog('Verificando status da conexão...', 'info-small');
         const response = await fetch(`${BACKEND_URL}/conectar/status/${INSTANCE_NAME}`);
         const data = await response.json();
-
         if (data.status === 'open') {
-            // Se já estiver conectado, mostra o painel principal.
             mostrarTelaPrincipal();
         } else {
-            // Se não estiver conectado, inicia o processo de conexão com QR Code.
             mostrarTelaDeConexao();
             iniciarProcessoDeConexao();
         }
     } catch (error) {
-        console.error("Erro crítico ao verificar status inicial:", error);
         statusConexaoDiv.innerHTML = '<span style="color: red;">Falha ao conectar ao servidor do backend.</span>';
         mostrarTelaDeConexao();
     }
@@ -84,54 +80,56 @@ async function verificarStatusInicial() {
 
 async function iniciarProcessoDeConexao() {
     try {
-        statusConexaoDiv.textContent = 'Gerando QR Code, por favor aguarde...';
-        qrCodeWrapper.innerHTML = ''; // Limpa QR Code antigo
-
         const response = await fetch(`${BACKEND_URL}/conectar/qr-code/${INSTANCE_NAME}`);
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || 'Falha ao buscar QR Code do servidor.');
+            throw new Error('Falha ao buscar dados do servidor.');
         }
         
         const data = await response.json();
         
-        // Renderiza a imagem base64 recebida do backend
-        qrCodeWrapper.innerHTML = `<img src="data:image/png;base64,${data.base64}" alt="QR Code do WhatsApp" style="width: 250px; height: 250px;"/>`;
-        statusConexaoDiv.textContent = 'QR Code pronto! Escaneie com seu celular.';
+        if (data && data.qr) {
+            // SUCESSO: A API retornou o texto do QR Code
+            qrCodeWrapper.innerHTML = '';
+            new QRCode(qrCodeWrapper, {
+                text: data.qr,
+                width: 250,
+                height: 250,
+            });
+            statusConexaoDiv.textContent = 'QR Code pronto! Escaneie com seu celular.';
+            comecarPollingDeStatus();
 
-        // Inicia a verificação periódica do status APÓS gerar o QR Code
-        comecarPollingDeStatus();
+        } else if (data && data.status === 'connecting') {
+            // PACIÊNCIA: A API está conectando. Vamos tentar de novo.
+            statusConexaoDiv.textContent = 'Inicializando conexão... Gerando QR Code em breve.';
+            setTimeout(iniciarProcessoDeConexao, 3000); // Tenta novamente em 3 segundos
+        } else {
+            throw new Error('A API retornou uma resposta inesperada.');
+        }
 
     } catch (error) {
         console.error("Erro no processo de conexão:", error);
         statusConexaoDiv.innerHTML = `<span style="color: red;">Erro ao gerar QR Code: ${error.message}</span>`;
-        stuckContainer.style.display = 'block'; // Mostra a opção de forçar nova sessão
+        stuckContainer.style.display = 'block'; 
     }
 }
 
 function comecarPollingDeStatus() {
     if (statusPollingInterval) clearInterval(statusPollingInterval);
-
     statusPollingInterval = setInterval(async () => {
         try {
             const response = await fetch(`${BACKEND_URL}/conectar/status/${INSTANCE_NAME}`);
             const data = await response.json();
-
             if (data.status === 'open') {
-                mostrarTelaPrincipal(); // Conectou com sucesso!
+                mostrarTelaPrincipal();
             }
-            // Se o status for 'close', continua no loop esperando a leitura.
-
         } catch (error) {
-            console.error("Erro durante o polling de status:", error);
-            // Opcional: Adicionar uma mensagem de erro temporária
+            console.error("Erro no polling de status:", error);
         }
-    }, 5000); // Verifica a cada 5 segundos
+    }, 5000);
 }
 
-
 // =============================================================================
-// --- LÓGICA DE LOGOUT ---
+// --- LÓGICA DE LOGOUT (ADAPTADA) ---
 // =============================================================================
 
 async function executarLogout() {
@@ -141,13 +139,11 @@ async function executarLogout() {
     this.textContent = 'Desconectando...';
 
     try {
+        // Agora chama o backend, que lida com o logout na API
         const response = await fetch(`${BACKEND_URL}/conectar/logout/${INSTANCE_NAME}`, { method: 'POST' });
         if (!response.ok) throw new Error('Falha ao processar o logout no servidor.');
-
         adicionarLog('Desconectado com sucesso!', 'success');
-        mostrarTelaDeConexao();
-        iniciarProcessoDeConexao(); // Reinicia o ciclo para uma nova conexão
-
+        verificarStatusInicial(); // Reinicia o ciclo para uma nova conexão
     } catch (error) {
         alert(`Erro ao desconectar: ${error.message}`);
     } finally {
@@ -161,20 +157,16 @@ forceRefreshBtn.addEventListener('click', executarLogout);
 
 
 // =============================================================================
-// --- LÓGICA DE ENVIO DE CAMPANHA ---
+// --- LÓGICA DE ENVIO DE CAMPANHA (ADAPTADA) ---
 // =============================================================================
 
 form.addEventListener('submit', async function (event) {
     event.preventDefault();
     let mensagem = mensagemTextarea.value.trim();
     const numerosTextoCompleto = numerosTextarea.value.trim();
-    
     const contatos = numerosTextoCompleto.split('\n').filter(line => line.trim() !== '').map(line => {
         const parts = line.split(',');
-        return {
-            numero: parts[0] ? parts[0].trim() : '',
-            nome: parts[1] ? parts[1].trim() : ''
-        };
+        return { numero: parts[0] ? parts[0].trim() : '', nome: parts[1] ? parts[1].trim() : '' };
     });
 
     const anexoArquivo = anexoInput.files[0];
@@ -185,7 +177,6 @@ form.addEventListener('submit', async function (event) {
 
     if (numerosTextoCompleto) {
         localStorage.setItem('listaNumerosSalva', numerosTextoCompleto);
-        adicionarLog('Lista de contatos salva para uso futuro.', 'info-small');
     }
 
     enviarBtn.disabled = true;
@@ -212,17 +203,10 @@ form.addEventListener('submit', async function (event) {
     for (const contato of contatos) {
         contadorEnvios++;
         adicionarLog(`(${contadorEnvios}/${contatos.length}) Preparando para ${contato.nome || contato.numero}...`);
-        
         let mensagemPersonalizada = mensagem.replace(/\{nome\}/gi, contato.nome || '').trim();
 
         try {
-            await enviarMensagemParaBackend(
-                contato.numero, 
-                mensagemPersonalizada, 
-                anexoKey, 
-                anexoArquivo ? anexoArquivo.type : null, 
-                anexoArquivo ? anexoArquivo.name : null
-            );
+            await enviarMensagemParaBackend(contato.numero, mensagemPersonalizada, anexoKey, anexoArquivo ? anexoArquivo.type : null, anexoArquivo ? anexoArquivo.name : null);
             adicionarLog(`--> Sucesso: Pedido para ${contato.nome || contato.numero} foi aceito.`, 'success');
         } catch (error) {
             adicionarLog(`--> Falha ao enviar para ${contato.nome || contato.numero}. Detalhes: ${error.message}`, 'error');
@@ -230,8 +214,8 @@ form.addEventListener('submit', async function (event) {
 
         if (contadorEnvios < contatos.length) {
             const delay = (contadorEnvios % 10 === 0) 
-                ? Math.floor(Math.random() * (180000 - 60000 + 1)) + 60000 // Pausa longa
-                : Math.floor(Math.random() * (28000 - 15000 + 1)) + 15000; // Delay curto
+                ? Math.floor(Math.random() * (180000 - 60000 + 1)) + 60000 
+                : Math.floor(Math.random() * (28000 - 15000 + 1)) + 15000;
             
             const delayEmSegundos = (delay / 1000).toFixed(1);
             const tipoLog = (delay > 50000) ? 'info' : 'info-small';
@@ -246,7 +230,8 @@ form.addEventListener('submit', async function (event) {
 });
 
 async function enviarMensagemParaBackend(numero, mensagem, anexoKey = null, mimeType = null, originalFileName = null) {
-    const endpoint = `${BACKEND_URL}/enviar/${INSTANCE_NAME}`; // Novo endpoint com o nome da instância
+    // A chamada agora inclui o INSTANCE_NAME na URL
+    const endpoint = `${BACKEND_URL}/enviar/${INSTANCE_NAME}`;
     const payload = {
         numero: numero.trim(),
         mensagem: mensagem,
@@ -268,7 +253,7 @@ async function enviarMensagemParaBackend(numero, mensagem, anexoKey = null, mime
 
 
 // =============================================================================
-// --- FUNÇÕES AUXILIARES E DE UI (SEM ALTERAÇÕES SIGNIFICATIVAS) ---
+// --- FUNÇÕES AUXILIARES E DE UI (SUA LÓGICA ORIGINAL PRESERVADA) ---
 // =============================================================================
 
 function mostrarTelaPrincipal() {
@@ -278,9 +263,6 @@ function mostrarTelaPrincipal() {
     }
     telaConexao.style.display = 'none';
     telaPrincipal.style.display = 'block';
-    stuckContainer.style.display = 'none';
-    
-    // Recupera a lista de números salva quando o usuário se conecta
     const listaSalva = localStorage.getItem('listaNumerosSalva');
     if (listaSalva) {
         numerosTextarea.value = listaSalva;
@@ -300,7 +282,6 @@ function adicionarLog(texto, tipo = 'info') {
     feedbackDiv.scrollTop = feedbackDiv.scrollHeight;
 }
 
-// Lógica de upload (sem alterações)
 async function uploadAnexoParaR2(arquivo) {
     adicionarLog('Solicitando permissão de upload...', 'info-small');
     const urlResponse = await fetch(`${BACKEND_URL}/gerar-url-upload`, {
@@ -309,9 +290,7 @@ async function uploadAnexoParaR2(arquivo) {
         body: JSON.stringify({ file_name: arquivo.name, content_type: arquivo.type }),
     });
     if (!urlResponse.ok) throw new Error('Falha ao obter URL de upload do servidor.');
-    
     const { upload_url, object_key } = await urlResponse.json();
-    
     adicionarLog('Enviando arquivo para a nuvem...', 'info-small');
     const uploadResponse = await fetch(upload_url, {
         method: 'PUT',
@@ -319,11 +298,9 @@ async function uploadAnexoParaR2(arquivo) {
         body: arquivo
     });
     if (!uploadResponse.ok) throw new Error('O envio do arquivo para o serviço de nuvem falhou.');
-    
     return object_key;
 }
 
-// Lógica de preview (sem alterações)
 mensagemTextarea.addEventListener('input', (event) => {
     previewMensagem.textContent = event.target.value || "Sua mensagem aparecerá aqui...";
 });
@@ -335,7 +312,6 @@ anexoInput.addEventListener('change', (event) => {
     previewVideo.style.display = 'none';
     previewImagem.src = '';
     previewVideo.src = '';
-
     if (arquivo) {
         const reader = new FileReader();
         reader.onload = function (e) {
