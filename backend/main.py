@@ -17,7 +17,7 @@ from datetime import datetime, timezone, timedelta
 # =================================================================================
 
 EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL")
-EVOLUTION_API_KEY = os.getenv("AUTHENTICATION_API_KEY") # Corrigido para a variável correta do .env
+EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY") # Corrigido para a variável correta do .env
 
 R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
 R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
