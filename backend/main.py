@@ -105,11 +105,35 @@ async def gerar_url_upload(payload: UrlPayload):
 @app.post("/enviar/{instance_name}")
 async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
     """
-    Envia uma mensagem (texto ou mídia) diretamente, sem verificação prévia do número.
+    Busca os detalhes da instância para confirmar que ela existe antes de enviar a mensagem.
     """
-    # A verificação foi removida, então usamos o número original limpo.
     numero_para_envio = ''.join(filter(str.isdigit, payload.numero))
+    
+    # --- NOVO: Bloco de verificação de existência da instância ---
+    try:
+        async with httpx.AsyncClient() as client:
+            print(f"DEBUG: Buscando detalhes da instância '{instance_name}'...")
+            fetch_url = f"{EVOLUTION_API_URL}/instance/fetchInstances"
+            fetch_response = await client.get(fetch_url, headers=headers, timeout=10.0)
+            fetch_response.raise_for_status()
+            
+            instances = fetch_response.json()
+            found_instance = next((inst for inst in instances if inst.get("instance", {}).get("instanceName") == instance_name), None)
 
+            if not found_instance:
+                print(f"ERRO: Instância '{instance_name}' não encontrada na API.")
+                raise HTTPException(status_code=404, detail=f"Instância '{instance_name}' não foi encontrada na Evolution API.")
+            
+            print(f"DEBUG: Instância '{instance_name}' encontrada com sucesso.")
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"ERRO ao buscar instâncias: {e}")
+        raise HTTPException(status_code=503, detail=f"Não foi possível verificar a existência da instância na Evolution API: {e}")
+    # --- FIM do bloco de verificação ---
+
+    # O resto do código continua o mesmo, pois a lógica de montar a mensagem está correta.
     # Prepara a simulação de digitação
     try:
         async with httpx.AsyncClient() as client:
@@ -117,7 +141,7 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
             await client.post(presence_url, json={"number": numero_para_envio, "presence": "composing"}, headers=headers)
             await asyncio.sleep(random.randint(1, 3))
     except Exception:
-        pass # Não impede o envio se a simulação de presença falhar
+        pass
 
     # Monta e envia a mensagem
     anexo_url_final = f"{R2_PUBLIC_URL}/{payload.anexo_key}" if payload.anexo_key else None
@@ -147,7 +171,6 @@ async def enviar_mensagem(instance_name: str, payload: MensagemPayload):
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        # Este erro agora só acontecerá se a própria API da Evolution estiver offline ou o envio falhar.
         raise HTTPException(status_code=503, detail=f"Falha ao enviar mensagem pela Evolution API: {e}")
 
 # Em main.py, substitua a função get_qr_code inteira por esta versão final:
