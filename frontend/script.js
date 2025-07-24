@@ -227,37 +227,46 @@ form.addEventListener('submit', async function (event) {
 });
 
 // --- NOVA FUNÇÃO DE ACOMPANHAMENTO ---
-function acompanharProgressoCampanha(campaignId, totalContatos) {
-    let processadosAnteriormente = 0;
+function acompanharProgressoCampanha(campaignId) {
+    let ultimaAcaoExibida = ''; // Guarda a última mensagem para evitar repetição
 
     const pollingInterval = setInterval(async () => {
         try {
             const response = await fetch(`${BACKEND_URL}/campanhas/status/${campaignId}`);
+            if (!response.ok) return;
+
             const status = await response.json();
 
-            // Calcula quantos novos contatos foram processados desde a última verificação
-            const processadosAtualmente = status.sentCount + status.failedCount;
-            if (processadosAtualmente > processadosAnteriormente) {
-                adicionarLog(`(${processadosAtualmente}/${totalContatos}) Enviado para ${status.lastContactProcessed}...`, 'success');
+            // Lógica para exibir o log detalhado passo a passo
+            if (status.lastAction && status.lastAction !== ultimaAcaoExibida) {
+                
+                let logType = 'info-small'; // Padrão para logs de progresso
+                if (status.lastAction.includes('Sucesso')) {
+                    logType = 'success';
+                } else if (status.lastAction.includes('Falha')) {
+                    logType = 'error';
+                } else if (status.lastAction.includes('finalizada')) {
+                    logType = 'info';
+                }
+                
+                adicionarLog(status.lastAction, logType);
+                ultimaAcaoExibida = status.lastAction;
             }
-            processadosAnteriormente = processadosAtualmente;
 
             // Se a campanha terminou, para o polling
             if (status.status.startsWith("Finalizada")) {
                 clearInterval(pollingInterval);
-                adicionarLog('Campanha finalizada!');
                 enviarBtn.disabled = false;
                 enviarBtn.textContent = 'Enviar Campanha';
-                // Limpa os campos após o sucesso
-                anexoInput.value = '';
+                anexoInput.value = ''; // Limpa o anexo
                 carregarHistoricoDeCampanhas();
             }
 
         } catch (error) {
-            console.error("Erro no polling:", error);
-            // Opcional: Adicionar uma mensagem de erro no log se o acompanhamento falhar
+            console.error("Erro no polling de status:", error);
+            clearInterval(pollingInterval);
         }
-    }, 3000); // Verifica o status a cada 3 segundos
+    }, 2000); // Verifica o status a cada 2 segundos
 }
 
 async function enviarMensagemParaBackend(numero, mensagem, anexoKey = null, mimeType = null, originalFileName = null) {
