@@ -2,10 +2,7 @@
 // --- CONFIGURAÇÃO PRINCIPAL ---
 // =============================================================================
 
-// ATENÇÃO: Coloque aqui a URL do seu backend implantado no Render ou em outro serviço.
-const BACKEND_URL = "https://whatsapp-backend-km3f.onrender.com";
-
-// Lógica para tornar a instância dinâmica, lendo da URL
+const BACKEND_URL = "https://whatsapp-backend-km3f.onrender.com"; // Sua URL de produção
 const urlParams = new URLSearchParams(window.location.search);
 const INSTANCE_NAME = urlParams.get('instancia');
 
@@ -13,18 +10,12 @@ const INSTANCE_NAME = urlParams.get('instancia');
 // --- SELEÇÃO DE ELEMENTOS DO DOM ---
 // =============================================================================
 
-// Telas principais
 const telaConexao = document.getElementById('tela-conexao');
 const telaPrincipal = document.getElementById('tela-principal');
-
-// Elementos da Tela de Conexão
-// A V1 não tem um /manager, então a lógica de QR code volta para cá
-const qrCodeWrapper = document.getElementById('qrcode-wrapper') || document.getElementById('qrcode-container'); 
+const qrCodeWrapper = document.getElementById('qrcode-wrapper') || document.getElementById('qrcode-container');
 const statusConexaoDiv = document.getElementById('status-conexao');
 const stuckContainer = document.getElementById('stuck-container');
 const forceRefreshBtn = document.getElementById('force-refresh-btn');
-
-// Elementos da Tela Principal
 const logoutBtnPrincipal = document.getElementById('logout-btn-principal');
 const form = document.getElementById('campanha-form');
 const mensagemTextarea = document.getElementById('mensagem');
@@ -32,8 +23,6 @@ const anexoInput = document.getElementById('anexo-input');
 const numerosTextarea = document.getElementById('numeros');
 const enviarBtn = document.getElementById('enviar-btn');
 const feedbackDiv = document.getElementById('feedback-envio');
-
-// Elementos do Preview
 const previewImagem = document.getElementById('preview-imagem');
 const previewMensagem = document.getElementById('preview-mensagem');
 const previewPdfContainer = document.getElementById('preview-pdf-container');
@@ -48,7 +37,6 @@ const previewVideo = document.getElementById('preview-video');
 let statusPollingInterval = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Validação para garantir que a instância foi passada na URL
     if (!INSTANCE_NAME) {
         document.body.innerHTML = '<h1 style="font-family: sans-serif; text-align: center; margin-top: 50px; color: red;">Erro: O nome da instância não foi fornecido na URL. Exemplo: /index.html?instancia=nome_do_seu_cliente</h1>';
         throw new Error("Instância não definida na URL.");
@@ -58,32 +46,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // =============================================================================
-// --- NOVA LÓGICA DE CONEXÃO E QR CODE (ADAPTADA) ---
+// --- LÓGICA DE CONEXÃO CORRETA E FINAL ---
 // =============================================================================
 
 async function verificarStatusInicial() {
-    // Com a nova lógica, sempre mostramos a tela de conexão
-    // e pedimos um novo QR Code para garantir um estado limpo.
-    mostrarTelaDeConexao();
-    iniciarProcessoDeConexao(); 
+    try {
+        adicionarLog('Verificando status da conexão...', 'info-small');
+        const response = await fetch(`${BACKEND_URL}/conectar/status/${INSTANCE_NAME}`);
+        const data = await response.json();
+
+        if (data.status === 'open') {
+            // Se já estiver conectado, mostra o painel principal.
+            mostrarTelaPrincipal();
+        } else {
+            // Se não estiver conectado, inicia o processo de conexão com QR Code.
+            mostrarTelaDeConexao();
+            iniciarProcessoDeConexao();
+        }
+    } catch (error) {
+        console.error("Erro crítico ao verificar status inicial:", error);
+        statusConexaoDiv.innerHTML = '<span style="color: red;">Falha ao conectar ao servidor do backend.</span>';
+        mostrarTelaDeConexao();
+    }
 }
 
 async function iniciarProcessoDeConexao() {
     try {
+        statusConexaoDiv.textContent = 'Gerando QR Code, por favor aguarde...';
+        qrCodeWrapper.innerHTML = ''; 
         const response = await fetch(`${BACKEND_URL}/conectar/qr-code/${INSTANCE_NAME}`);
         if (!response.ok) {
-            throw new Error('Falha ao buscar dados do servidor.');
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Falha ao buscar QR Code do servidor.');
         }
         
         const data = await response.json();
         
-        // --- AJUSTE FINAL E DEFINITIVO ---
-        // Agora procuramos pela chave "base64" que a API V1 nos envia.
         if (data && data.base64) {
-            // SUCESSO: A API retornou a imagem do QR Code pronta.
-            qrCodeWrapper.innerHTML = ''; // Limpa a área
-            
-            // Cria uma tag de imagem e coloca o conteúdo base64 diretamente nela.
             const qrImage = document.createElement('img');
             qrImage.src = data.base64;
             qrImage.alt = "QR Code do WhatsApp";
@@ -92,17 +91,10 @@ async function iniciarProcessoDeConexao() {
             qrCodeWrapper.appendChild(qrImage);
 
             statusConexaoDiv.textContent = 'QR Code pronto! Escaneie com seu celular.';
-            comecarPollingDeStatus(); // Começa a verificar se o usuário escaneou
-
-        } else if (data && data.status === 'connecting') {
-            // PACIÊNCIA: A API está conectando. Vamos tentar de novo.
-            statusConexaoDiv.textContent = 'Inicializando conexão... Gerando QR Code em breve.';
-            setTimeout(iniciarProcessoDeConexao, 3000); // Tenta novamente em 3 segundos
+            comecarPollingDeStatus();
         } else {
-            // ERRO: A API não retornou nem "base64" nem "connecting".
-            throw new Error('A API retornou uma resposta inesperada.');
+            throw new Error('A API não retornou os dados do QR Code.');
         }
-        // --- FIM DO AJUSTE ---
 
     } catch (error) {
         console.error("Erro no processo de conexão:", error);
@@ -127,21 +119,18 @@ function comecarPollingDeStatus() {
 }
 
 // =============================================================================
-// --- LÓGICA DE LOGOUT (ADAPTADA) ---
+// --- LÓGICA DE LOGOUT E ENVIO (JÁ ESTAVAM CORRETAS) ---
 // =============================================================================
 
 async function executarLogout() {
     if (!confirm("Tem certeza que deseja desconectar a sessão atual do WhatsApp?")) return;
-
     this.disabled = true;
     this.textContent = 'Desconectando...';
-
     try {
-        // Agora chama o backend, que lida com o logout na API
-        const response = await fetch(`${BACKEND_URL}/conectar/logout/${INSTANCE_NAME}`, { method: 'POST' });
+        const response = await fetch(`${BACKEND_URL}/conectar/logout/${INSTANCE_NAME}`, { method: 'POST' }); // Pode ser POST ou DELETE
         if (!response.ok) throw new Error('Falha ao processar o logout no servidor.');
         adicionarLog('Desconectado com sucesso!', 'success');
-        verificarStatusInicial(); // Reinicia o ciclo para uma nova conexão
+        verificarStatusInicial(); // Reinicia o ciclo, que mostrará a tela de conexão
     } catch (error) {
         alert(`Erro ao desconectar: ${error.message}`);
     } finally {
