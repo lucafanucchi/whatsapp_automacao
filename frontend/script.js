@@ -233,8 +233,10 @@ function acompanharProgressoCampanha(campaignId) {
     const pollingInterval = setInterval(async () => {
         try {
             const response = await fetch(`${BACKEND_URL}/campanhas/status/${campaignId}`);
-            if (!response.ok) return;
-
+            if (!response.ok){ 
+                clearInterval(pollingInterval);
+                return;
+            }
             const status = await response.json();
 
             // Lógica para exibir o log detalhado passo a passo
