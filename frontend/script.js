@@ -228,8 +228,7 @@ form.addEventListener('submit', async function (event) {
 
 // --- NOVA FUNÇÃO DE ACOMPANHAMENTO ---
 function acompanharProgressoCampanha(campaignId) {
-    let ultimaAcaoExibida = '';
-    let ultimaPausaExibida = '' // Guarda a última mensagem para evitar repetição
+    let logCount = 0; // Controla quantas mensagens de log já foram exibidas
 
     const pollingInterval = setInterval(async () => {
         try {
@@ -241,22 +240,22 @@ function acompanharProgressoCampanha(campaignId) {
             const status = await response.json();
 
             // Lógica para exibir o log detalhado passo a passo
-            if (status.lastAction && status.lastAction !== ultimaAcaoExibida) {
-                
-                let logType = status.lastAction.includes('Sucesso') ? 'success' : (status.lastAction.includes('Falha') ? 'error' : 'info-small');
-                adicionarLog(status.lastAction, logType);
-                ultimaAcaoExibida = status.lastAction;
-            }
-            if (status.currentPause && status.currentPause !== ultimaPausaExibida) {
-                adicionarLog(status.currentPause, 'info-small');
-                ultimaPausaExibida = status.currentPause;
-            }
+            if (status.logMessages && status.logMessages.length > logCount) {
+                const novasMensagens = status.logMessages.slice(logCount); // Pega apenas as mensagens que ainda não foram mostradas
+                novasMensagens.forEach(msg => {
+                    let logType = 'info-small';
+                    if (msg.includes('Sucesso')) logType = 'success';
+                    else if (msg.includes('Falha')) logType = 'error';
+                    else if (msg.includes('Iniciando') || msg.includes('finalizada')) logType = 'info';
+                    adicionarLog(msg, logType);
+                });
+
+                logCount = status.logMessages.length;
+        }
+            
             if (status.status.startsWith("Finalizada")) {
                 clearInterval(pollingInterval);
                 // Exibe a mensagem final de campanha finalizada que pode ter sido perdida
-                if (status.lastAction !== ultimaAcaoExibida) {
-                    adicionarLog(status.lastAction, 'info');
-                }
                 enviarBtn.disabled = false;
                 enviarBtn.textContent = 'Enviar Campanha';
                 anexoInput.value = '';
@@ -265,6 +264,7 @@ function acompanharProgressoCampanha(campaignId) {
 
         } catch (error) {
             console.error("Erro no polling de status:", error);
+            adicionarLog('Erro ao acompanhar a campanha. Verifique o console.', 'error');
             clearInterval(pollingInterval);
         }
     }, 2000);

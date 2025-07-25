@@ -77,8 +77,7 @@ class CampaignLog(BaseModel):
     sentCount: int
     failedCount: int
     lastContactProcessed: Optional[str] = None # Novo campo para o log em tempo real
-    lastAction: Optional[str] = None
-    currentPause: Optional[str] = None
+    logMessages: list[str] = []
 
 class CampanhaPayload(BaseModel):
     contatos: list[Contato]
@@ -116,11 +115,12 @@ headers = {
 
 async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload, log_entry: CampaignLog):
     total_contatos = len(payload.contatos)
+    log_entry.logMessages.append(f"Iniciando campanha para {total_contatos} contato(s).")
     for i, contato in enumerate(payload.contatos):
         contador_atual = i + 1
         log_entry.currentPause = None
         try:
-            log_entry.lastAction = f"({contador_atual}/{total_contatos}) Preparando para {contato.nome or contato.numero}..."
+            log_entry.logMessages.append(f"({contador_atual}/{total_contatos}) Preparando para {contato.nome or contato.numero}...")
             numero_para_envio = ''.join(filter(str.isdigit, contato.numero))
             mensagem_personalizada = payload.mensagem.replace('{nome}', contato.nome or '').strip()
             anexo_url_final = f"{R2_PUBLIC_URL}/{payload.anexo_key}" if payload.anexo_key else None
@@ -163,11 +163,11 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
                 response.raise_for_status()
             
             log_entry.sentCount += 1
-            log_entry.lastAction = f"--> Sucesso: Enviado para {contato.nome or contato.numero}."
+            log_entry.logMessages.append(f"--> Sucesso: Enviado para {contato.nome or contato.numero}.")
         except Exception as e:
             print(f"Erro ao enviar para {contato.numero}: {e}")
             log_entry.failedCount += 1
-            log_entry.lastAction = f"--> Falha ao enviar para {contato.nome or contato.numero}."
+            log_entry.logMessages.append(f"--> Falha ao enviar para {contato.nome or contato.numero}.")
         
         utc_now = datetime.now(timezone.utc)
         br_tz = timezone(timedelta(hours=-3))
@@ -175,12 +175,11 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
         
         if contador_atual < total_contatos:
             delay_seconds = random.randint(15, 28)
-            log_entry.lastAction = f"Aguardando {delay_seconds} segundos..."
+            log_entry.logMessages.append(f"Aguardando {delay_seconds} segundos...")
             await asyncio.sleep(delay_seconds)
 
     log_entry.status = "Finalizada" if log_entry.failedCount == 0 else "Finalizada com erros"
-    log_entry.lastAction = "Campanha finalizada!"
-    log_entry.currentPause = None # Limpa a mensagem de pausa no final
+    log_entry.logMessages.append("Campanha finalizada!")
     print(f"Campanha {log_entry.id} finalizada.")
 
 @app.get("/")
