@@ -78,6 +78,7 @@ class CampaignLog(BaseModel):
     failedCount: int
     lastContactProcessed: Optional[str] = None # Novo campo para o log em tempo real
     lastAction: Optional[str] = None
+    currentPause: Optional[str] = None
 
 class CampanhaPayload(BaseModel):
     contatos: list[Contato]
@@ -117,6 +118,7 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
     total_contatos = len(payload.contatos)
     for i, contato in enumerate(payload.contatos):
         contador_atual = i + 1
+        log_entry.currentPause = None
         try:
             log_entry.lastAction = f"({contador_atual}/{total_contatos}) Preparando para {contato.nome or contato.numero}..."
             numero_para_envio = ''.join(filter(str.isdigit, contato.numero))
@@ -178,6 +180,7 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
 
     log_entry.status = "Finalizada" if log_entry.failedCount == 0 else "Finalizada com erros"
     log_entry.lastAction = "Campanha finalizada!"
+    log_entry.currentPause = None # Limpa a mensagem de pausa no final
     print(f"Campanha {log_entry.id} finalizada.")
 
 @app.get("/")
