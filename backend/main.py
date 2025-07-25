@@ -115,7 +115,7 @@ headers = {
 
 async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload, log_entry: CampaignLog):
     total_contatos = len(payload.contatos)
-    for i ,contato in payload.contatos:
+    for i, contato in enumerate(payload.contatos):
         contador_atual = i + 1
         try:
             log_entry.lastAction = f"({contador_atual}/{total_contatos}) Preparando para {contato.nome or contato.numero}..."
