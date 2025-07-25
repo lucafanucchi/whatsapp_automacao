@@ -118,7 +118,6 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
     log_entry.logMessages.append(f"Iniciando campanha para {total_contatos} contato(s).")
     for i, contato in enumerate(payload.contatos):
         contador_atual = i + 1
-        log_entry.currentPause = None
         try:
             log_entry.logMessages.append(f"({contador_atual}/{total_contatos}) Preparando para {contato.nome or contato.numero}...")
             numero_para_envio = ''.join(filter(str.isdigit, contato.numero))
