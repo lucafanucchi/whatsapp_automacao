@@ -113,6 +113,26 @@ headers = {
 # --- ENDPOINTS DA APLICAÇÃO ---
 # =================================================================================
 
+# Adicione esta função no início do seu main.py
+async def calcular_delay_inteligente(contador_atual: int, total_contatos: int):
+    """Delays mais humanizados e conservadores"""
+    
+    # Delay base mais alto (era 15-28, agora 35-60)
+    base_delay = random.randint(35, 60)
+    
+    # A cada 5 mensagens, pausa maior (era a cada 10)
+    if contador_atual % 5 == 0:
+        base_delay += random.randint(180, 300)  # +3-5 min
+        print(f"Pausa extra aplicada após {contador_atual} mensagens")
+    
+    # A cada 15 mensagens, pausa muito maior  
+    if contador_atual % 15 == 0:
+        base_delay += random.randint(600, 900)  # +10-15 min
+        print(f"Pausa longa aplicada após {contador_atual} mensagens")
+    
+    return base_delay
+
+
 async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload, log_entry: CampaignLog):
     total_contatos = len(payload.contatos)
     log_entry.logMessages.append(f"Iniciando campanha para {total_contatos} contato(s).")
@@ -133,7 +153,7 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
                 request_payload = {
                     "number": numero_para_envio,
                     "options": {
-                        "delay": 1200,
+                        "delay": 5000,
                         "presence": "composing"
                     },
 
@@ -173,9 +193,17 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
         log_entry.endTime = utc_now.astimezone(br_tz).strftime("%Y-%m-%d %H:%M:%S")
         
         if contador_atual < total_contatos:
-            delay_seconds = random.randint(15, 28)
-            log_entry.logMessages.append(f"Aguardando {delay_seconds} segundos...")
-            await asyncio.sleep(delay_seconds)
+            delay_seconds = await calcular_delay_inteligente(contador_atual, total_contatos)
+    
+    # Mostra tempo de forma mais amigável
+        if delay_seconds >= 60:
+            minutos = delay_seconds // 60
+            segundos = delay_seconds % 60
+            log_entry.logMessages.append(f"⏱️ Pausa de segurança: {minutos}m{segundos}s")
+        else:
+            log_entry.logMessages.append(f"⏱️ Aguardando {delay_seconds}s...")
+    
+        await asyncio.sleep(delay_seconds)
 
     log_entry.status = "Finalizada" if log_entry.failedCount == 0 else "Finalizada com erros"
     log_entry.logMessages.append("Campanha finalizada!")
