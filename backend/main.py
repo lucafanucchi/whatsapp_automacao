@@ -136,6 +136,7 @@ async def calcular_delay_inteligente(contador_atual: int, total_contatos: int):
 async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload, log_entry: CampaignLog):
     total_contatos = len(payload.contatos)
     log_entry.logMessages.append(f"Iniciando campanha para {total_contatos} contato(s).")
+    
     for i, contato in enumerate(payload.contatos):
         contador_atual = i + 1
         try:
@@ -156,7 +157,6 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
                         "delay": 5000,
                         "presence": "composing"
                     },
-
                     "text": mensagem_personalizada
                 }
             else:
@@ -183,28 +183,33 @@ async def processar_envios_campanha(instance_name: str, payload: CampanhaPayload
             
             log_entry.sentCount += 1
             log_entry.logMessages.append(f"--> Sucesso: Enviado para {contato.nome or contato.numero}.")
+            
         except Exception as e:
             print(f"Erro ao enviar para {contato.numero}: {e}")
             log_entry.failedCount += 1
             log_entry.logMessages.append(f"--> Falha ao enviar para {contato.nome or contato.numero}.")
         
+        # Atualiza o timestamp
         utc_now = datetime.now(timezone.utc)
         br_tz = timezone(timedelta(hours=-3))
         log_entry.endTime = utc_now.astimezone(br_tz).strftime("%Y-%m-%d %H:%M:%S")
         
+        # CORREÇÃO: Só aplica delay se NÃO for o último contato
         if contador_atual < total_contatos:
+            # AQUI ESTÁ A CORREÇÃO: definir delay_seconds ANTES de usá-lo
             delay_seconds = await calcular_delay_inteligente(contador_atual, total_contatos)
-    
-    # Mostra tempo de forma mais amigável
-        if delay_seconds >= 60:
-            minutos = delay_seconds // 60
-            segundos = delay_seconds % 60
-            log_entry.logMessages.append(f"⏱️ Pausa de segurança: {minutos}m{segundos}s")
-        else:
-            log_entry.logMessages.append(f"⏱️ Aguardando {delay_seconds}s...")
-    
-        await asyncio.sleep(delay_seconds)
+            
+            # Mostra tempo de forma mais amigável
+            if delay_seconds >= 60:
+                minutos = delay_seconds // 60
+                segundos = delay_seconds % 60
+                log_entry.logMessages.append(f"⏱️ Pausa de segurança: {minutos}m{segundos}s")
+            else:
+                log_entry.logMessages.append(f"⏱️ Aguardando {delay_seconds}s...")
+            
+            await asyncio.sleep(delay_seconds)
 
+    # Finaliza a campanha
     log_entry.status = "Finalizada" if log_entry.failedCount == 0 else "Finalizada com erros"
     log_entry.logMessages.append("Campanha finalizada!")
     print(f"Campanha {log_entry.id} finalizada.")
